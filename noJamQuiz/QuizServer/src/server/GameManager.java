@@ -1,6 +1,10 @@
 package server;
 
 import model.Quiz;
+import model.QuizDataDAO;
+import model.QuestionDTO;
+
+import java.io.File;
 import java.util.*;
 
 public class GameManager {
@@ -8,7 +12,7 @@ public class GameManager {
     private int roomId;
     private List<Quiz> quizList;
     private int currentQuizIndex;
-    private Map<String, Integer> playerScores;  // 플레이어별 점수
+    private Map<String, Integer> playerScores;
     private Timer quizTimer;
     private boolean isGameStarted;
     private int remainingTime;
@@ -24,12 +28,37 @@ public class GameManager {
     }
 
     private void initializeQuizzes() {
-        // 임시 퀴즈 데이터
-        quizList.add(new Quiz("1+1=2 입니까?", "O", Quiz.QuizType.OX, "수학"));
-        quizList.add(new Quiz("대한민국의 수도는?", "서울",
-                new String[]{"서울", "부산", "대구", "인천"},
-                Quiz.QuizType.MULTIPLE_CHOICE, "상식"));
-        // 추후 ChatGPT API로 대체 예정
+        QuizDataDAO quizData = new QuizDataDAO();
+
+        // 현재 작업 디렉토리 출력
+        String currentPath = System.getProperty("user.dir");
+        server.printDisplay("현재 작업 디렉토리: " + currentPath);
+
+        // 파일 존재 여부 확인
+        File quizFile = new File("Data/Quiz1.dat");
+        server.printDisplay("Quiz1.dat 파일 경로: " + quizFile.getAbsolutePath());
+        server.printDisplay("파일 존재 여부: " + quizFile.exists());
+
+        boolean loadError = quizData.loadQuiz(1);
+
+        if (!loadError) {
+            for (QuestionDTO questionDTO : quizData) {
+                Quiz quiz = new Quiz(
+                        questionDTO.getQuestion(),
+                        questionDTO.getAnswer(),
+                        Quiz.QuizType.SHORT_ANSWER,
+                        "일반상식"
+                );
+                quiz.setTimeLimit(20);
+                quiz.setPoints(10);
+                quizList.add(quiz);
+            }
+
+            Collections.shuffle(quizList);
+            server.printDisplay("퀴즈 데이터 로드 완료: " + quizList.size() + "개의 문제");
+        } else {
+            server.printDisplay("퀴즈 파일 로드 실패. 파일 위치를 확인해주세요.");
+        }
     }
 
     public void startGame() {
@@ -71,28 +100,35 @@ public class GameManager {
 
     private void timeUp() {
         quizTimer.cancel();
-        server.broadcastToRoom(roomId, "시간 종료!");
+        Quiz currentQuiz = quizList.get(currentQuizIndex);
+        server.broadcastToRoom(roomId, "시간 종료! 정답은 '" + currentQuiz.getAnswer() + "' 입니다.");
         currentQuizIndex++;
         sendNextQuiz();
     }
 
     public void handleAnswer(String playerName, String answer) {
+        if (currentQuizIndex >= quizList.size()) return;
+
         Quiz currentQuiz = quizList.get(currentQuizIndex);
         if (currentQuiz.checkAnswer(answer)) {
             int score = currentQuiz.calculateScore(remainingTime);
             playerScores.merge(playerName, score, Integer::sum);
             server.broadcastToRoom(roomId,
                     String.format("%s님 정답! (%d점)", playerName, score));
+
+            // 정답자가 나오면 다음 문제로 진행
+            quizTimer.cancel();
+            currentQuizIndex++;
+            sendNextQuiz();
         }
     }
 
-    public void endGame() {  // private를 public으로 변경
+    public void endGame() {
         isGameStarted = false;
         if (quizTimer != null) {
             quizTimer.cancel();
         }
 
-        // 결과 정렬 및 전송
         List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>(playerScores.entrySet());
         sortedScores.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
 
