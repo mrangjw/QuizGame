@@ -1,7 +1,7 @@
-package client;
+package Client;
+
 
 import model.Room;
-
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
@@ -56,7 +56,7 @@ public class LobbyGUI extends JPanel {
     }
 
     private void showCreateRoomDialog() {
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "방 만들기", true);
+        JDialog dialog = new JDialog((Frame)SwingUtilities.getWindowAncestor(this), "방 만들기", true);
         dialog.setLayout(new BorderLayout(10, 10));
         dialog.setSize(300, 200);
 
@@ -83,8 +83,8 @@ public class LobbyGUI extends JPanel {
                 return;
             }
 
-            String category = (String) categoryBox.getSelectedItem();
-            int maxPlayers = (Integer) playerCountSpinner.getValue();
+            String category = (String)categoryBox.getSelectedItem();
+            int maxPlayers = (Integer)playerCountSpinner.getValue();
 
             client.createRoom(roomName, category, maxPlayers);
             dialog.dispose();
