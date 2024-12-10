@@ -48,7 +48,7 @@ public class Room {
         this.isGameStarted = false;
     }
 
-
+    // Getters and Setters
     public int getRoomId() { return roomId; }
     public String getRoomName() { return roomName; }
     public String getHostName() { return hostName; }

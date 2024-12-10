@@ -14,6 +14,7 @@ public class QuizServer extends JFrame {
     private Thread acceptThread;
     private Vector<ClientHandler> users;
     private Map<Integer, Room> rooms;
+    private Map<Integer, GameManager> gameManagers;  // 게임 매니저 관리
     private int roomIdCounter;
 
     private JTextArea t_display;
@@ -25,6 +26,7 @@ public class QuizServer extends JFrame {
         this.port = port;
         this.users = new Vector<>();
         this.rooms = new HashMap<>();
+        this.gameManagers = new HashMap<>();
         this.roomIdCounter = 1;
         buildGUI();
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -99,6 +101,15 @@ public class QuizServer extends JFrame {
 
     private void stopServer() {
         try {
+            // 실행 중인 모든 게임 중지
+            for (GameManager gameManager : gameManagers.values()) {
+                gameManager.endGame();
+            }
+            gameManagers.clear();
+
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
             }
@@ -153,6 +164,13 @@ public class QuizServer extends JFrame {
             printDisplay(playerName + "님이 " + room.getRoomName() + " 방에서 나갔습니다.");
             broadcastToRoom(roomId, playerName + "님이 퇴장하셨습니다.");
 
+            // 여기에 추가
+            if (gameManagers.containsKey(roomId)) {
+                GameManager gameManager = gameManagers.get(roomId);
+                gameManager.endGame();
+                gameManagers.remove(roomId);
+            }
+
             if (room.getPlayers().isEmpty() || playerName.equals(room.getHostName())) {
                 rooms.remove(roomId);
                 printDisplay(room.getRoomName() + " 방이 삭제되었습니다.");
@@ -177,7 +195,7 @@ public class QuizServer extends JFrame {
         broadcastMessage(roomList.toString());
     }
 
-    private void broadcastToRoom(int roomId, String message) {
+    public void broadcastToRoom(int roomId, String message) {
         Room room = rooms.get(roomId);
         if (room != null) {
             // 서버 로그에 한 번만 출력
@@ -244,6 +262,36 @@ public class QuizServer extends JFrame {
                 client.send("LOBBY:");
             } catch (Exception e) {
                 client.send("방 나가기 실패: " + e.getMessage());
+            }
+        } else if (message.startsWith("START_GAME:")) {
+            try {
+                int roomId = Integer.parseInt(message.substring(11));
+                Room room = rooms.get(roomId);
+                if (room != null && room.getHostName().equals(client.getPlayerName())) {
+                    if (room.getPlayers().size() >= 2) {
+                        GameManager gameManager = new GameManager(this, roomId);
+                        gameManagers.put(roomId, gameManager);
+                        room.setGameStarted(true);
+                        gameManager.startGame();
+                    } else {
+                        client.send("게임 시작 실패: 최소 2명의 플레이어가 필요합니다.");
+                    }
+                }
+            } catch (Exception e) {
+                client.send("게임 시작 실패: " + e.getMessage());
+            }
+        } else if (message.startsWith("ANSWER:")) {
+            try {
+                Room room = findPlayerRoom(client.getPlayerName());
+                if (room != null) {
+                    GameManager gameManager = gameManagers.get(room.getRoomId());
+                    if (gameManager != null) {
+                        String answer = message.substring(7);
+                        gameManager.handleAnswer(client.getPlayerName(), answer);
+                    }
+                }
+            } catch (Exception e) {
+                client.send("답변 처리 실패: " + e.getMessage());
             }
         } else {
             // 일반 메시지는 같은 방의 사용자들에게만 전달

@@ -10,6 +10,7 @@ public class ClientGUI extends JPanel {
     private JTextField answerField;
     private JButton submitButton;
     private JButton leaveButton;
+    private JButton startButton;
 
     public ClientGUI(QuizClient client) {
         this.client = client;
@@ -19,14 +20,20 @@ public class ClientGUI extends JPanel {
     }
 
     private void initComponents() {
-        // 상단 패널
+        // 상단 패널 수정
         JPanel topPanel = new JPanel(new BorderLayout(5, 5));
         topPanel.setBorder(new EmptyBorder(0, 0, 5, 0));
 
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        startButton = new JButton("게임 시작");
         leaveButton = new JButton("방 나가기");
+
+        startButton.addActionListener(e -> client.startGame());
         leaveButton.addActionListener(e -> client.leaveRoom());
 
-        topPanel.add(leaveButton, BorderLayout.EAST);
+        buttonPanel.add(startButton);
+        buttonPanel.add(leaveButton);
+        topPanel.add(buttonPanel, BorderLayout.EAST);
         add(topPanel, BorderLayout.NORTH);
 
         // 디스플레이 영역
@@ -74,5 +81,13 @@ public class ClientGUI extends JPanel {
         SwingUtilities.invokeLater(() -> {
             displayArea.setText("");
         });
+    }
+    public void setStartButtonEnabled(boolean enabled) {
+        startButton.setEnabled(enabled);
+    }
+
+    public void reset() {
+        clearChat();
+        setStartButtonEnabled(true);
     }
 }

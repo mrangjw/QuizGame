@@ -98,6 +98,17 @@ public class QuizClient extends JFrame {
             showMessage("방 생성 실패: " + e.getMessage());
         }
     }
+    // StartGame 메소드
+    public void startGame() {
+        try {
+            if (currentRoomId != -1) {
+                out.writeObject("START_GAME:" + currentRoomId);
+                out.flush();
+            }
+        } catch (IOException e) {
+            showMessage("게임 시작 실패: " + e.getMessage());
+        }
+    }
 
     public void joinRoom(int roomId) {
         try {
@@ -175,6 +186,8 @@ public class QuizClient extends JFrame {
         } else if (message.startsWith("JOIN_ROOM:")) {
             currentRoomId = Integer.parseInt(message.substring(10));
             cardLayout.show(mainPanel, "GAME");
+        } else if (message.startsWith("GAME_START:")) {
+            cardLayout.show(mainPanel, "GAME");
         } else if (message.equals("LOBBY:")) {
             currentRoomId = -1;
             cardLayout.show(mainPanel, "LOBBY");
@@ -214,16 +227,20 @@ public class QuizClient extends JFrame {
     }
 
     public static void main(String[] args) {
-        String playerName = JOptionPane.showInputDialog(null,
-                "플레이어 이름을 입력하세요:",
-                "퀴즈 게임",
-                JOptionPane.QUESTION_MESSAGE);
-
-        if (playerName != null && !playerName.trim().isEmpty()) {
+        for (int i = 1; i <= 3; i++) {
+            final int clientNum = i;
             SwingUtilities.invokeLater(() -> {
-                QuizClient client = new QuizClient(playerName.trim());
-                client.setVisible(true);
-                client.connect("localhost", 9999);
+                String playerName = JOptionPane.showInputDialog(null,
+                        String.format("플레이어 %d 이름을 입력하세요:", clientNum),
+                        "퀴즈 게임",
+                        JOptionPane.QUESTION_MESSAGE);
+
+                if (playerName != null && !playerName.trim().isEmpty()) {
+                    QuizClient client = new QuizClient(playerName.trim());
+                    client.setLocation(100 * clientNum, 100 * clientNum);
+                    client.setVisible(true);
+                    client.connect("localhost", 9999);
+                }
             });
         }
     }

@@ -41,6 +41,7 @@ public class ClientHandler implements Runnable {
             playerName = message.substring(3);
             server.printDisplay(playerName + " 플레이어가 접속했습니다.");
         } else {
+            // 모든 메시지를 QuizServer의 handleMessage로 위임
             server.handleMessage(this, message);
         }
     }

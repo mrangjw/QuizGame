@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="QuizClient">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/noJamQuiz/QuizClient/out/artifacts/QuizClient_jar/QuizClient.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
