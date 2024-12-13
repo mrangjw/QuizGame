@@ -1,3 +1,4 @@
+
 package server;
 
 import model.Room;
@@ -14,7 +15,7 @@ public class QuizServer extends JFrame {
     private Thread acceptThread;
     private Vector<ClientHandler> users;
     private Map<Integer, Room> rooms;
-    private Map<Integer, GameManager> gameManagers;  // 게임 매니저 관리
+    private Map<Integer, GameManager> gameManagers;
     private int roomIdCounter;
 
     private JTextArea t_display;
@@ -37,7 +38,6 @@ public class QuizServer extends JFrame {
         setSize(500, 600);
         setLayout(new BorderLayout(5, 5));
 
-        // 디스플레이 패널
         t_display = new JTextArea();
         t_display.setEditable(false);
         t_display.setFont(new Font("맑은 고딕", Font.PLAIN, 14));
@@ -47,7 +47,6 @@ public class QuizServer extends JFrame {
                 new EmptyBorder(5, 5, 5, 5)));
         add(scrollPane, BorderLayout.CENTER);
 
-        // 컨트롤 패널
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
         controlPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
@@ -72,14 +71,13 @@ public class QuizServer extends JFrame {
             serverSocket = new ServerSocket(port);
             printDisplay("서버가 포트 " + port + "에서 시작되었습니다.");
 
-            // 클라이언트 수락을 위한 별도 스레드 생성
             acceptThread = new Thread(() -> {
                 while (!Thread.interrupted()) {
                     try {
                         Socket clientSocket = serverSocket.accept();
                         ClientHandler clientHandler = new ClientHandler(clientSocket, this);
                         users.add(clientHandler);
-                        new Thread(clientHandler).start();  // 각 클라이언트를 별도 스레드로 관리
+                        new Thread(clientHandler).start();
                         printDisplay("새로운 클라이언트가 연결되었습니다.");
                     } catch (IOException e) {
                         if (!serverSocket.isClosed()) {
@@ -101,15 +99,11 @@ public class QuizServer extends JFrame {
 
     private void stopServer() {
         try {
-            // 실행 중인 모든 게임 중지
             for (GameManager gameManager : gameManagers.values()) {
                 gameManager.endGame();
             }
             gameManagers.clear();
 
-            if (serverSocket != null && !serverSocket.isClosed()) {
-                serverSocket.close();
-            }
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
             }
@@ -136,7 +130,7 @@ public class QuizServer extends JFrame {
             Room room = new Room(roomIdCounter++, name, hostName, maxPlayers, quizCategory);
             rooms.put(room.getRoomId(), room);
             printDisplay(hostName + "님이 '" + name + "' 방을 생성했습니다.");
-            broadcastRoomList();  // 모든 클라이언트에게 방 목록 업데이트 전송
+            broadcastRoomList();
             return room;
         } catch (IllegalArgumentException e) {
             printDisplay("방 생성 실패: " + e.getMessage());
@@ -157,6 +151,10 @@ public class QuizServer extends JFrame {
         return false;
     }
 
+    public Room getRoom(int roomId) {
+        return rooms.get(roomId);
+    }
+
     public synchronized void leaveRoom(int roomId, String playerName) {
         Room room = rooms.get(roomId);
         if (room != null) {
@@ -164,7 +162,6 @@ public class QuizServer extends JFrame {
             printDisplay(playerName + "님이 " + room.getRoomName() + " 방에서 나갔습니다.");
             broadcastToRoom(roomId, playerName + "님이 퇴장하셨습니다.");
 
-            // 여기에 추가
             if (gameManagers.containsKey(roomId)) {
                 GameManager gameManager = gameManagers.get(roomId);
                 gameManager.endGame();
@@ -198,10 +195,7 @@ public class QuizServer extends JFrame {
     public void broadcastToRoom(int roomId, String message) {
         Room room = rooms.get(roomId);
         if (room != null) {
-            // 서버 로그에 한 번만 출력
             printDisplay(String.format("[방 %d] %s", roomId, message));
-
-            // 각 클라이언트에 한 번씩만 전송
             for (ClientHandler client : users) {
                 if (room.getPlayers().contains(client.getPlayerName())) {
                     client.send("[방 " + roomId + "] " + message);
@@ -220,7 +214,6 @@ public class QuizServer extends JFrame {
         users.remove(client);
         String playerName = client.getPlayerName();
         if (playerName != null) {
-            // 클라이언트가 속한 방이 있다면 해당 방에서도 제거
             for (Room room : rooms.values()) {
                 if (room.getPlayers().contains(playerName)) {
                     leaveRoom(room.getRoomId(), playerName);
@@ -269,13 +262,23 @@ public class QuizServer extends JFrame {
                 Room room = rooms.get(roomId);
                 if (room != null && room.getHostName().equals(client.getPlayerName())) {
                     if (room.getPlayers().size() >= 2) {
-                        GameManager gameManager = new GameManager(this, roomId);
-                        gameManagers.put(roomId, gameManager);
-                        room.setGameStarted(true);
-                        gameManager.startGame();
+                        client.send("USE_GPT");
                     } else {
                         client.send("게임 시작 실패: 최소 2명의 플레이어가 필요합니다.");
                     }
+                }
+            } catch (Exception e) {
+                client.send("게임 시작 실패: " + e.getMessage());
+            }
+        } else if (message.startsWith("GPT_CHOICE:")) {
+            try {
+                boolean useGPT = message.substring(11).equals("Y");
+                Room room = findPlayerRoom(client.getPlayerName());
+                if (room != null) {
+                    GameManager gameManager = new GameManager(this, room.getRoomId(), useGPT);
+                    gameManagers.put(room.getRoomId(), gameManager);
+                    room.setGameStarted(true);
+                    gameManager.startGame();
                 }
             } catch (Exception e) {
                 client.send("게임 시작 실패: " + e.getMessage());
@@ -294,7 +297,6 @@ public class QuizServer extends JFrame {
                 client.send("답변 처리 실패: " + e.getMessage());
             }
         } else {
-            // 일반 메시지는 같은 방의 사용자들에게만 전달
             Room room = findPlayerRoom(client.getPlayerName());
             if (room != null) {
                 broadcastToRoom(room.getRoomId(), message);

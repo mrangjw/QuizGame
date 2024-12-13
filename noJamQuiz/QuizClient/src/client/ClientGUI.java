@@ -1,3 +1,4 @@
+
 package client;
 
 import javax.swing.*;
@@ -20,7 +21,7 @@ public class ClientGUI extends JPanel {
     }
 
     private void initComponents() {
-        // 상단 패널 수정
+        // 상단 패널
         JPanel topPanel = new JPanel(new BorderLayout(5, 5));
         topPanel.setBorder(new EmptyBorder(0, 0, 5, 0));
 
@@ -72,8 +73,19 @@ public class ClientGUI extends JPanel {
 
     public void displayMessage(String message) {
         SwingUtilities.invokeLater(() -> {
-            displayArea.append(message + "\n");
-            displayArea.setCaretPosition(displayArea.getDocument().getLength());
+            if (message.equals("USE_GPT")) {
+                int choice = JOptionPane.showConfirmDialog(
+                        this,
+                        "GPT를 통해 퀴즈를 내시겠습니까?",
+                        "퀴즈 모드 선택",
+                        JOptionPane.YES_NO_OPTION
+                );
+                String response = choice == JOptionPane.YES_OPTION ? "Y" : "N";
+                client.sendMessage("GPT_CHOICE:" + response);
+            } else {
+                displayArea.append(message + "\n");
+                displayArea.setCaretPosition(displayArea.getDocument().getLength());
+            }
         });
     }
 
@@ -82,6 +94,7 @@ public class ClientGUI extends JPanel {
             displayArea.setText("");
         });
     }
+
     public void setStartButtonEnabled(boolean enabled) {
         startButton.setEnabled(enabled);
     }

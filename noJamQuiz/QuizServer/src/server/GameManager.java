@@ -3,6 +3,7 @@ package server;
 import model.Quiz;
 import model.QuizDataDAO;
 import model.QuestionDTO;
+import model.Room;
 
 import java.io.File;
 import java.util.*;
@@ -16,18 +17,52 @@ public class GameManager {
     private Timer quizTimer;
     private boolean isGameStarted;
     private int remainingTime;
+    private GPTConnector gptConnector;
+    private boolean useGPT;
 
-    public GameManager(QuizServer server, int roomId) {
+    public GameManager(QuizServer server, int roomId, boolean useGPT) {
         this.server = server;
         this.roomId = roomId;
         this.quizList = new ArrayList<>();
         this.playerScores = new HashMap<>();
         this.currentQuizIndex = 0;
         this.isGameStarted = false;
+        this.useGPT = useGPT;
+        if (useGPT) {
+            this.gptConnector = new GPTConnector();
+        }
         initializeQuizzes();
     }
 
     private void initializeQuizzes() {
+        if (useGPT) {
+            initializeGPTQuizzes();
+        } else {
+            initializeFileQuizzes();
+        }
+    }
+
+    private void initializeGPTQuizzes() {
+        Room room = server.getRoom(roomId);
+        try {
+            String response = gptConnector.generateQuiz(room.getCategory().getKoreanName());
+            Quiz quiz = gptConnector.parseQuizResponse(response);
+            if (quiz != null) {
+                quiz.setTimeLimit(20);
+                quiz.setPoints(10);
+                quizList.add(quiz);
+                server.printDisplay("GPT 퀴즈 생성 완료");
+            } else {
+                server.printDisplay("GPT 퀴즈 생성 실패. 파일 퀴즈로 전환합니다.");
+                initializeFileQuizzes();
+            }
+        } catch (Exception e) {
+            server.printDisplay("GPT 퀴즈 생성 실패: " + e.getMessage());
+            initializeFileQuizzes();
+        }
+    }
+
+    private void initializeFileQuizzes() {
         QuizDataDAO quizData = new QuizDataDAO();
 
         // 현재 작업 디렉토리 출력
@@ -55,9 +90,16 @@ public class GameManager {
             }
 
             Collections.shuffle(quizList);
-            server.printDisplay("퀴즈 데이터 로드 완료: " + quizList.size() + "개의 문제");
+            server.printDisplay("파일 퀴즈 데이터 로드 완료: " + quizList.size() + "개의 문제");
         } else {
-            server.printDisplay("퀴즈 파일 로드 실패. 파일 위치를 확인해주세요.");
+            server.printDisplay("퀴즈 파일 로드 실패. 기본 퀴즈를 사용합니다.");
+            Quiz defaultQuiz = new Quiz(
+                    "대한민국의 수도는?",
+                    "서울",
+                    Quiz.QuizType.SHORT_ANSWER,
+                    "기본"
+            );
+            quizList.add(defaultQuiz);
         }
     }
 
@@ -116,7 +158,6 @@ public class GameManager {
             server.broadcastToRoom(roomId,
                     String.format("%s님 정답! (%d점)", playerName, score));
 
-            // 정답자가 나오면 다음 문제로 진행
             quizTimer.cancel();
             currentQuizIndex++;
             sendNextQuiz();

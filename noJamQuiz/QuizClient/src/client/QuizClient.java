@@ -1,3 +1,4 @@
+
 package client;
 
 import model.Room;
@@ -31,7 +32,6 @@ public class QuizClient extends JFrame {
         cardLayout = new CardLayout();
         mainPanel = new JPanel(cardLayout);
 
-        // 대기실과 게임방 화면 초기화
         lobbyGUI = new LobbyGUI(this);
         gameGUI = new ClientGUI(this);
 
@@ -59,7 +59,6 @@ public class QuizClient extends JFrame {
             receiveThread = new Thread(this::receiveMessages);
             receiveThread.start();
             showMessage("서버에 연결되었습니다.");
-
         } catch (IOException e) {
             showMessage("서버 연결 실패: " + e.getMessage());
         }
@@ -98,7 +97,7 @@ public class QuizClient extends JFrame {
             showMessage("방 생성 실패: " + e.getMessage());
         }
     }
-    // StartGame 메소드
+
     public void startGame() {
         try {
             if (currentRoomId != -1) {
@@ -156,33 +155,8 @@ public class QuizClient extends JFrame {
     }
 
     private void handleMessage(String message) {
-        if (message.startsWith("ROOM_LIST:")) { // 방 목록 업데이트 처리
-            try {
-                String[] roomDataArray = message.substring(10).split(";");
-                ArrayList<Room> rooms = new ArrayList<>();
-
-                for (String roomData : roomDataArray) {
-                    if (roomData.trim().isEmpty()) continue;
-
-                    String[] parts = roomData.split(",");
-                    int roomId = Integer.parseInt(parts[0]);
-                    String roomName = parts[1];
-                    Room.QuizCategory category = Room.QuizCategory.fromKoreanName(parts[2]);
-                    String hostName = parts[3];
-                    int currentPlayers = Integer.parseInt(parts[4]);
-                    int maxPlayers = Integer.parseInt(parts[5]);
-
-                    Room room = new Room(roomId, roomName, hostName, maxPlayers, category);
-                    rooms.add(room);
-                }
-
-                // 대기실에 있을 때만 방 목록 업데이트
-                if (currentRoomId == -1) {
-                    lobbyGUI.updateRoomList(rooms.toArray(new Room[0]));
-                }
-            } catch (Exception e) {
-                showMessage("방 목록 업데이트 실패: " + e.getMessage());
-            }
+        if (message.startsWith("ROOM_LIST:")) {
+            handleRoomList(message);
         } else if (message.startsWith("JOIN_ROOM:")) {
             currentRoomId = Integer.parseInt(message.substring(10));
             cardLayout.show(mainPanel, "GAME");
@@ -191,16 +165,68 @@ public class QuizClient extends JFrame {
         } else if (message.equals("LOBBY:")) {
             currentRoomId = -1;
             cardLayout.show(mainPanel, "LOBBY");
+        } else if (message.equals("USE_GPT")) {
+            handleGPTChoice();
         } else {
             showMessage(message);
+        }
+    }
+
+    private void handleRoomList(String message) {
+        try {
+            String[] roomDataArray = message.substring(10).split(";");
+            ArrayList<Room> rooms = new ArrayList<>();
+
+            for (String roomData : roomDataArray) {
+                if (roomData.trim().isEmpty()) continue;
+
+                String[] parts = roomData.split(",");
+                int roomId = Integer.parseInt(parts[0]);
+                String roomName = parts[1];
+                Room.QuizCategory category = Room.QuizCategory.fromKoreanName(parts[2]);
+                String hostName = parts[3];
+                int currentPlayers = Integer.parseInt(parts[4]);
+                int maxPlayers = Integer.parseInt(parts[5]);
+
+                Room room = new Room(roomId, roomName, hostName, maxPlayers, category);
+                rooms.add(room);
+            }
+
+            if (currentRoomId == -1) {
+                lobbyGUI.updateRoomList(rooms.toArray(new Room[0]));
+            }
+        } catch (Exception e) {
+            showMessage("방 목록 업데이트 실패: " + e.getMessage());
+        }
+    }
+
+    private void handleGPTChoice() {
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                "GPT를 통해 퀴즈를 내시겠습니까?",
+                "퀴즈 모드 선택",
+                JOptionPane.YES_NO_OPTION
+        );
+        sendMessage("GPT_CHOICE:" + (choice == JOptionPane.YES_OPTION ? "Y" : "N"));
+    }
+
+    public void sendMessage(String message) {
+        try {
+            if (socket != null && !socket.isClosed() && out != null) {
+                out.writeObject(message);
+                out.flush();
+            } else {
+                showMessage("서버와 연결되어 있지 않습니다.");
+            }
+        } catch (IOException e) {
+            showMessage("메시지 전송 실패: " + e.getMessage());
         }
     }
 
     public void sendAnswer(String answer) {
         try {
             if (socket != null && !socket.isClosed() && out != null) {
-                String message = String.format("%s 플레이어의 답변 : %s", playerName, answer);
-                out.writeObject(message);
+                out.writeObject("ANSWER:" + answer);
                 out.flush();
             } else {
                 showMessage("서버와 연결되어 있지 않습니다.");
