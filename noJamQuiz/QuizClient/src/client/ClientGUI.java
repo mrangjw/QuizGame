@@ -3,11 +3,7 @@ package client;
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
-import java.util.List;
-import java.util.Map;
 import model.Quiz;
-import client.panels.RPSPanel;
-import client.panels.GameResultPanel;
 
 public class ClientGUI extends JPanel {
     private QuizClient client;
@@ -23,14 +19,15 @@ public class ClientGUI extends JPanel {
     private JLabel timerLabel;
     private JLabel scoreLabel;
 
+    // 커스텀 색상 정의
     private static final Color PRIMARY_COLOR = new Color(70, 130, 180);
     private static final Color SECONDARY_COLOR = new Color(176, 196, 222);
     private static final Color BACKGROUND_COLOR = new Color(240, 248, 255);
     private static final Color TEXT_COLOR = new Color(25, 25, 25);
 
-    public ClientGUI(QuizClient client, String playerName) {
+    public ClientGUI(QuizClient client, String playerName) {  // 생성자 수정
         this.client = client;
-        this.playerName = playerName;
+        this.playerName = playerName;  // 플레이어 이름 저장
         setLayout(new BorderLayout(5, 5));
         setBorder(new EmptyBorder(15, 15, 15, 15));
         setBackground(BACKGROUND_COLOR);
@@ -38,10 +35,12 @@ public class ClientGUI extends JPanel {
     }
 
     private void initComponents() {
+        // 상단 패널
         JPanel topPanel = new JPanel(new BorderLayout(5, 5));
         topPanel.setBackground(BACKGROUND_COLOR);
         topPanel.setBorder(new EmptyBorder(0, 0, 10, 0));
 
+        // 버튼 패널
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         buttonPanel.setBackground(BACKGROUND_COLOR);
 
@@ -55,25 +54,28 @@ public class ClientGUI extends JPanel {
         buttonPanel.add(leaveButton);
         topPanel.add(buttonPanel, BorderLayout.EAST);
 
-        JPanel infoPanel = new JPanel(new BorderLayout(10, 0));
-        infoPanel.setBackground(BACKGROUND_COLOR);
-        infoPanel.setBorder(new EmptyBorder(0, 5, 5, 5));
+        // 상태 정보 패널 (타이머, 점수)
+        JPanel statusPanel = new JPanel(new BorderLayout(10, 0));
+        statusPanel.setBackground(BACKGROUND_COLOR);
+        statusPanel.setBorder(new EmptyBorder(0, 5, 5, 5));
 
         timerLabel = new JLabel("남은 시간: --", SwingConstants.LEFT);
         scoreLabel = new JLabel("점수: 0", SwingConstants.RIGHT);
         styleLabel(timerLabel);
         styleLabel(scoreLabel);
 
-        infoPanel.add(timerLabel, BorderLayout.WEST);
-        infoPanel.add(scoreLabel, BorderLayout.EAST);
-        topPanel.add(infoPanel, BorderLayout.WEST);
+        statusPanel.add(timerLabel, BorderLayout.WEST);
+        statusPanel.add(scoreLabel, BorderLayout.EAST);
+        topPanel.add(statusPanel, BorderLayout.WEST);
 
         add(topPanel, BorderLayout.NORTH);
 
+        // 메인 분할 패널
         JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         mainSplitPane.setBorder(null);
         mainSplitPane.setBackground(BACKGROUND_COLOR);
 
+        // 상단 퀴즈 패널
         JPanel quizContentPanel = new JPanel(new BorderLayout(10, 10));
         quizContentPanel.setBackground(BACKGROUND_COLOR);
 
@@ -83,6 +85,7 @@ public class ClientGUI extends JPanel {
         quizScrollPane.setBorder(createStyledTitledBorder("문제"));
         quizContentPanel.add(quizScrollPane, BorderLayout.CENTER);
 
+        // 하단 답변 패널
         JPanel answerPanel = new JPanel(new BorderLayout(10, 10));
         answerPanel.setBackground(BACKGROUND_COLOR);
 
@@ -91,6 +94,7 @@ public class ClientGUI extends JPanel {
         answerScrollPane.setBorder(createStyledTitledBorder("답변 내역"));
         answerPanel.add(answerScrollPane, BorderLayout.CENTER);
 
+        // 답변 입력 패널
         JPanel inputPanel = new JPanel(new BorderLayout(8, 0));
         inputPanel.setBackground(BACKGROUND_COLOR);
         inputPanel.setBorder(new EmptyBorder(10, 0, 0, 0));
@@ -106,6 +110,7 @@ public class ClientGUI extends JPanel {
         inputPanel.add(submitButton, BorderLayout.EAST);
         answerPanel.add(inputPanel, BorderLayout.SOUTH);
 
+        // 분할 패널 설정
         mainSplitPane.setTopComponent(quizContentPanel);
         mainSplitPane.setBottomComponent(answerPanel);
         mainSplitPane.setDividerLocation(200);
@@ -201,32 +206,6 @@ public class ClientGUI extends JPanel {
                 content = content.substring(roomPrefix.length());
             }
 
-            if (content.equals("SELECT_MODE")) {
-                Object[] options = {"일반 모드", "GPT 모드"};
-                String[] descriptions = {
-                        "서버에 저장된 일반 문제를 사용합니다.",
-                        "GPT가 실시간으로 문제를 생성합니다."
-                };
-
-                int choice = JOptionPane.showOptionDialog(
-                        this,
-                        "퀴즈 모드를 선택해주세요.\n\n" +
-                                "일반 모드: " + descriptions[0] + "\n" +
-                                "GPT 모드: " + descriptions[1],
-                        "모드 선택",
-                        JOptionPane.YES_NO_OPTION,
-                        JOptionPane.QUESTION_MESSAGE,
-                        null,
-                        options,
-                        options[0]
-                );
-
-                if (choice != JOptionPane.CLOSED_OPTION) {
-                    client.sendMessage("MODE_CHOICE:" + (choice == 1 ? "GPT" : "NORMAL"));
-                }
-                return;
-            }
-
             if (content.startsWith("QUIZ:")) {
                 String quizContent = content.substring("QUIZ:".length());
                 quizDisplay.setText(quizContent);
@@ -244,11 +223,16 @@ public class ClientGUI extends JPanel {
                 return;
             }
 
+            // 점수 메시지 처리 수정
             if (content.startsWith("SCORE:")) {
                 try {
                     String[] parts = content.substring("SCORE:".length()).split(":");
-                    if (parts.length == 2 && parts[0].equals(playerName)) {
-                        scoreLabel.setText("점수: " + parts[1]);
+                    if (parts.length == 2) {
+                        String scorePlayerName = parts[0];
+                        // 자신의 점수일 때만 업데이트
+                        if (scorePlayerName.equals(playerName)) {
+                            scoreLabel.setText("점수: " + parts[1]);
+                        }
                     }
                 } catch (Exception e) {
                     System.err.println("점수 파싱 오류: " + e.getMessage());
@@ -259,16 +243,6 @@ public class ClientGUI extends JPanel {
             answerDisplay.append(message + "\n");
             answerDisplay.setCaretPosition(answerDisplay.getDocument().getLength());
         });
-    }
-
-    public void startRPSGame(List<String> players) {
-        RPSPanel rpsPanel = new RPSPanel(null, players, playerName, client);
-        rpsPanel.setVisible(true);
-    }
-
-    public void showGameResult(Map<String, Integer> scores, boolean rpsDecided) {
-        GameResultPanel resultPanel = new GameResultPanel(client.getMainFrame(), scores, playerName, client, rpsDecided);
-        resultPanel.setVisible(true);
     }
 
     public void clearChat() {
