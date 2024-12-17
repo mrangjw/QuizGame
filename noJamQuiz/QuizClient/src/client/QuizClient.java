@@ -7,6 +7,10 @@ import java.awt.event.WindowEvent;
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 public class QuizClient extends JFrame {
     private ClientGUI gameGUI;
@@ -32,7 +36,7 @@ public class QuizClient extends JFrame {
         mainPanel = new JPanel(cardLayout);
 
         lobbyGUI = new LobbyGUI(this);
-        gameGUI = new ClientGUI(this, playerName);  // playerName 전달
+        gameGUI = new ClientGUI(this, playerName);
 
         mainPanel.add(lobbyGUI, "LOBBY");
         mainPanel.add(gameGUI, "GAME");
@@ -108,21 +112,43 @@ public class QuizClient extends JFrame {
                 currentRoomId = Integer.parseInt(message.substring(10));
                 cardLayout.show(mainPanel, "GAME");
                 gameGUI.clearChat();
+            } else if (message.startsWith("RPS_START:")) {
+                String[] players = message.substring(10).split(",");
+                List<String> playerList = new ArrayList<>(Arrays.asList(players));
+                gameGUI.startRPSGame(playerList);
+            } else if (message.startsWith("GAME_END:")) {
+                handleGameEnd(message);
             } else if (message.equals("USE_GPT")) {
                 handleGPTChoice();
             } else if (message.equals("LOBBY:")) {
                 currentRoomId = -1;
                 cardLayout.show(mainPanel, "LOBBY");
             } else {
-                // 게임 중이면 ClientGUI에게 메시지 전달
                 if (currentRoomId != -1) {
                     gameGUI.displayMessage(message);
                 } else {
-                    // 로비에서는 LobbyGUI에게 메시지 전달
                     lobbyGUI.displayMessage(message);
                 }
             }
         });
+    }
+
+    private void handleGameEnd(String message) {
+        String[] parts = message.substring(9).split(";");
+        Map<String, Integer> scores = new HashMap<>();
+        boolean rpsDecided = message.contains("RPS_DECIDED:");
+
+        String scoresStr = rpsDecided ? message.substring(message.indexOf(":") + 1) : message.substring(9);
+        String[] scoreEntries = scoresStr.split(";");
+
+        for (String entry : scoreEntries) {
+            if (!entry.trim().isEmpty()) {
+                String[] scoreParts = entry.split(",");
+                scores.put(scoreParts[0], Integer.parseInt(scoreParts[1]));
+            }
+        }
+
+        gameGUI.showGameResult(scores, rpsDecided);
     }
 
     private void handleRoomList(String message) {
@@ -140,8 +166,10 @@ public class QuizClient extends JFrame {
                 String hostName = parts[3];
                 int currentPlayers = Integer.parseInt(parts[4]);
                 int maxPlayers = Integer.parseInt(parts[5]);
+                int questionCount = Integer.parseInt(parts[6]);
+                int timePerQuestion = Integer.parseInt(parts[7]);
 
-                Room room = new Room(roomId, roomName, hostName, maxPlayers, category);
+                Room room = new Room(roomId, roomName, hostName, maxPlayers, category, questionCount, timePerQuestion);
                 rooms.add(room);
             }
 
@@ -163,9 +191,10 @@ public class QuizClient extends JFrame {
         sendMessage("GPT_CHOICE:" + (choice == JOptionPane.YES_OPTION ? "Y" : "N"));
     }
 
-    public void createRoom(String roomName, String category, int maxPlayers) {
+    public void createRoom(String roomName, String category, int maxPlayers, int questionCount, int timePerQuestion) {
         if (socket != null && !socket.isClosed() && out != null) {
-            sendMessage(String.format("CREATE_ROOM:%s,%s,%d", roomName, category, maxPlayers));
+            sendMessage(String.format("CREATE_ROOM:%s,%s,%d,%d,%d",
+                    roomName, category, maxPlayers, questionCount, timePerQuestion));
         } else {
             showMessage("서버와 연결되어 있지 않습니다.");
         }
@@ -211,6 +240,10 @@ public class QuizClient extends JFrame {
         if (!answer.trim().isEmpty()) {
             sendMessage("ANSWER:" + answer);
         }
+    }
+
+    public JFrame getMainFrame() {
+        return this;
     }
 
     private void showMessage(String message) {
