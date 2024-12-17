@@ -47,6 +47,23 @@ public class QuizClient extends JFrame {
         rpsPanel = new RPSPanel(playerName);
         resultPanel = new GameResultPanel();
 
+        // GamePanel 이벤트 처리
+        gamePanel.addPropertyChangeListener("gameResult", evt -> {
+            @SuppressWarnings("unchecked")
+            List<Map.Entry<String, Integer>> sortedScores =
+                    (List<Map.Entry<String, Integer>>) evt.getNewValue();
+            cardLayout.show(mainPanel, "RESULT");
+            resultPanel.displayResults(sortedScores);
+        });
+
+        gamePanel.addPropertyChangeListener("gameRPS", evt -> {
+            String message = (String) evt.getNewValue();
+            String playerList = message.substring(10);
+            cardLayout.show(mainPanel, "RPS");
+            rpsPanel.updatePlayersStatus(Arrays.asList(playerList.split(",")), new ArrayList<>());
+            rpsPanel.startTimer(10);
+        });
+
         // RPS 패널 이벤트 처리
         rpsPanel.addPropertyChangeListener("choiceMade", evt -> {
             RPS.Choice choice = (RPS.Choice) evt.getNewValue();
@@ -57,27 +74,16 @@ public class QuizClient extends JFrame {
         resultPanel.addPropertyChangeListener("exitToLobby", evt -> {
             if ((Boolean) evt.getNewValue()) {
                 leaveRoom();
+                cardLayout.show(mainPanel, "LOBBY");
             }
         });
 
-        // GamePanel 이벤트 처리
-        gamePanel.addPropertyChangeListener("gameResult", evt -> {
-            @SuppressWarnings("unchecked")
-            List<Map.Entry<String, Integer>> sortedScores =
-                    (List<Map.Entry<String, Integer>>) evt.getNewValue();
-            cardLayout.show(mainPanel, "RESULT");
-            resultPanel.displayResults(sortedScores);
-        });
-
-        gamePanel.addPropertyChangeListener("rpsMessage", evt -> {
-            String message = (String) evt.getNewValue();
-            if (message.startsWith("START_RPS:")) {
-                cardLayout.show(mainPanel, "RPS");
-                rpsPanel.startTimer(10);
-            } else if (message.startsWith("RPS_STATUS:")) {
-                handleRPSStatus(message);
-            } else if (message.startsWith("RPS_RESULT:")) {
-                handleRPSResult(message);
+        resultPanel.addPropertyChangeListener("exitGame", evt -> {
+            if ((Boolean) evt.getNewValue()) {
+                leaveRoom();
+                disconnect();
+                dispose();
+                System.exit(0);
             }
         });
 
@@ -94,7 +100,16 @@ public class QuizClient extends JFrame {
         setSize(800, 600);
         add(mainPanel);
         setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                leaveRoom();
+                disconnect();
+                dispose();
+                System.exit(0);
+            }
+        });
     }
 
     public void connect(String host, int port) {
@@ -125,7 +140,6 @@ public class QuizClient extends JFrame {
             if (in != null) {
                 in.close();
             }
-            showMessage("서버와의 연결이 종료되었습니다.");
         } catch (IOException e) {
             showMessage("연결 종료 중 오류 발생: " + e.getMessage());
         }
@@ -163,7 +177,10 @@ public class QuizClient extends JFrame {
                 currentRoomId = -1;
                 cardLayout.show(mainPanel, "LOBBY");
             } else if (message.startsWith("START_RPS:")) {
-                handleRPSStart(message);
+                String playerList = message.substring(10);
+                cardLayout.show(mainPanel, "RPS");
+                rpsPanel.startTimer(10);
+                rpsPanel.updatePlayersStatus(Arrays.asList(playerList.split(",")), new ArrayList<>());
             } else if (message.startsWith("RPS_STATUS:")) {
                 handleRPSStatus(message);
             } else if (message.startsWith("RPS_RESULT:")) {
@@ -181,8 +198,10 @@ public class QuizClient extends JFrame {
     }
 
     private void handleRPSStart(String message) {
+        String playerList = message.substring(10);
         cardLayout.show(mainPanel, "RPS");
         rpsPanel.startTimer(10);
+        rpsPanel.updatePlayersStatus(Arrays.asList(playerList.split(",")), new ArrayList<>());
     }
 
     private void handleRPSStatus(String message) {
@@ -191,11 +210,13 @@ public class QuizClient extends JFrame {
         List<String> waitingPlayers = new ArrayList<>();
 
         for (String player : parts) {
-            String[] playerInfo = player.split(":");
-            if (playerInfo[1].equals("READY")) {
-                readyPlayers.add(playerInfo[0]);
-            } else {
-                waitingPlayers.add(playerInfo[0]);
+            if (!player.isEmpty()) {
+                String[] playerInfo = player.split(":");
+                if (playerInfo[1].equals("READY")) {
+                    readyPlayers.add(playerInfo[0]);
+                } else {
+                    waitingPlayers.add(playerInfo[0]);
+                }
             }
         }
 
@@ -213,8 +234,10 @@ public class QuizClient extends JFrame {
         List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>();
 
         for (String entry : entries) {
-            String[] parts = entry.split(":");
-            sortedScores.add(new AbstractMap.SimpleEntry<>(parts[0], Integer.parseInt(parts[1])));
+            if (!entry.isEmpty()) {
+                String[] parts = entry.split(":");
+                sortedScores.add(new AbstractMap.SimpleEntry<>(parts[0], Integer.parseInt(parts[1])));
+            }
         }
 
         cardLayout.show(mainPanel, "RESULT");
@@ -237,8 +260,7 @@ public class QuizClient extends JFrame {
                 int currentPlayers = Integer.parseInt(parts[4]);
                 int maxPlayers = Integer.parseInt(parts[5]);
 
-                Room room = new Room(roomId, roomName, hostName, maxPlayers, category,
-                        5, 30);
+                Room room = new Room(roomId, roomName, hostName, maxPlayers, category, 5, 30);
 
                 for (int i = 1; i < currentPlayers; i++) {
                     room.addPlayer("Player " + i);
@@ -316,12 +338,6 @@ public class QuizClient extends JFrame {
         }
     }
 
-    public void sendRPSChoice(RPS.Choice choice) {
-        if (!choice.toString().trim().isEmpty()) {
-            sendMessage("RPS_CHOICE:" + choice.name());
-        }
-    }
-
     private void showMessage(String message) {
         SwingUtilities.invokeLater(() -> {
             if (currentRoomId == -1) {
@@ -330,14 +346,6 @@ public class QuizClient extends JFrame {
                 gamePanel.displayMessage(message);
             }
         });
-    }
-
-    @Override
-    protected void processWindowEvent(WindowEvent e) {
-        if (e.getID() == WindowEvent.WINDOW_CLOSING) {
-            disconnect();
-        }
-        super.processWindowEvent(e);
     }
 
     public static void main(String[] args) {

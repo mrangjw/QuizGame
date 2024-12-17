@@ -12,53 +12,40 @@ public class RPSPanel extends JPanel {
     private RPS.Choice selectedChoice;
     private JLabel timerLabel;
     private JLabel statusLabel;
-    private JPanel playerPanel;
+    private JPanel playersPanel;
     private Timer countdownTimer;
     private int remainingTime;
-    private boolean isParticipant;
-
-    private JButton rockButton;
-    private JButton paperButton;
-    private JButton scissorsButton;
+    private boolean canParticipate;
 
     private final Color PRIMARY_COLOR = new Color(70, 130, 180);
     private final Color SELECTED_COLOR = new Color(135, 206, 250);
     private final Font TITLE_FONT = new Font("맑은 고딕", Font.BOLD, 24);
     private final Font CONTENT_FONT = new Font("맑은 고딕", Font.PLAIN, 16);
 
-    private final ImageIcon rockIcon;
-    private final ImageIcon paperIcon;
-    private final ImageIcon scissorsIcon;
+    private ImageIcon rockIcon;
+    private ImageIcon paperIcon;
+    private ImageIcon scissorsIcon;
 
     public RPSPanel(String playerName) {
         this.playerName = playerName;
-        this.isParticipant = false;
-
-        rockIcon = loadResizedImageIcon("/resources/images/rps_rock.png", 100, 100);
-        paperIcon = loadResizedImageIcon("/resources/images/rps_paper.png", 100, 100);
-        scissorsIcon = loadResizedImageIcon("/resources/images/rps_scissors.png", 100, 100);
+        this.canParticipate = false;
 
         setLayout(new BorderLayout(10, 10));
         setBorder(new EmptyBorder(20, 20, 20, 20));
         setBackground(Color.WHITE);
 
-        JPanel topPanel = createTopPanel();
-        add(topPanel, BorderLayout.NORTH);
-
-        playerPanel = new JPanel();
-        playerPanel.setBackground(Color.WHITE);
-        playerPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
-        add(playerPanel, BorderLayout.CENTER);
-
-        JPanel choicePanel = createChoicePanel();
-        add(choicePanel, BorderLayout.SOUTH);
-
-        statusLabel = new JLabel("선택해주세요!", SwingConstants.CENTER);
-        statusLabel.setFont(CONTENT_FONT);
-        add(statusLabel, BorderLayout.CENTER);
+        loadImages();
+        initializeComponents();
     }
 
-    private JPanel createTopPanel() {
+    private void loadImages() {
+        rockIcon = loadResizedImageIcon("/resources/images/rps_rock.png", 100, 100);
+        paperIcon = loadResizedImageIcon("/resources/images/rps_paper.png", 100, 100);
+        scissorsIcon = loadResizedImageIcon("/resources/images/rps_scissors.png", 100, 100);
+    }
+
+    private void initializeComponents() {
+        // 상단 패널 (타이틀 + 타이머)
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setBackground(Color.WHITE);
 
@@ -71,7 +58,22 @@ public class RPSPanel extends JPanel {
 
         topPanel.add(titleLabel, BorderLayout.CENTER);
         topPanel.add(timerLabel, BorderLayout.EAST);
-        return topPanel;
+        add(topPanel, BorderLayout.NORTH);
+
+        // 플레이어 상태 패널
+        playersPanel = new JPanel();
+        playersPanel.setBackground(Color.WHITE);
+        playersPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        add(playersPanel, BorderLayout.CENTER);
+
+        // 상태 라벨
+        statusLabel = new JLabel("", SwingConstants.CENTER);
+        statusLabel.setFont(CONTENT_FONT);
+        add(statusLabel, BorderLayout.CENTER);
+
+        // 선택 버튼 패널
+        JPanel choicePanel = createChoicePanel();
+        add(choicePanel, BorderLayout.SOUTH);
     }
 
     private JPanel createChoicePanel() {
@@ -79,43 +81,68 @@ public class RPSPanel extends JPanel {
         choicePanel.setBackground(Color.WHITE);
         choicePanel.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        rockButton = createChoiceButton(rockIcon, "바위", RPS.Choice.ROCK);
-        paperButton = createChoiceButton(paperIcon, "보", RPS.Choice.PAPER);
-        scissorsButton = createChoiceButton(scissorsIcon, "가위", RPS.Choice.SCISSORS);
-
-        choicePanel.add(rockButton);
-        choicePanel.add(paperButton);
-        choicePanel.add(scissorsButton);
+        createRPSButton("가위", scissorsIcon, RPS.Choice.SCISSORS, choicePanel);
+        createRPSButton("바위", rockIcon, RPS.Choice.ROCK, choicePanel);
+        createRPSButton("보", paperIcon, RPS.Choice.PAPER, choicePanel);
 
         return choicePanel;
     }
 
-    private JButton createChoiceButton(ImageIcon icon, String text, RPS.Choice choice) {
-        JButton button = new JButton();
-        button.setIcon(icon);
-        button.setToolTipText(text);
-        button.setPreferredSize(new Dimension(120, 120));
+    private void createRPSButton(String text, ImageIcon icon, RPS.Choice choice, JPanel panel) {
+        JButton button = new JButton(icon);
         button.setBackground(Color.WHITE);
         button.setBorder(BorderFactory.createLineBorder(PRIMARY_COLOR, 2, true));
-        button.setFocusPainted(false);
+        button.setToolTipText(text);
+        button.setPreferredSize(new Dimension(120, 120));
 
         button.addActionListener(e -> {
-            if (selectedChoice == null && isParticipant) {
+            if (selectedChoice == null && canParticipate) {
                 selectedChoice = choice;
                 updateButtonStates();
                 firePropertyChange("choiceMade", null, choice);
-                enableAllButtons(false);
                 statusLabel.setText(text + "를 선택했습니다!");
+                disableAllButtons();
             }
         });
 
-        return button;
+        button.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (selectedChoice == null && canParticipate) {
+                    button.setBackground(SELECTED_COLOR.brighter());
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (selectedChoice != choice) {
+                    button.setBackground(Color.WHITE);
+                }
+            }
+        });
+
+        panel.add(button);
     }
 
     private void updateButtonStates() {
-        rockButton.setBackground(RPS.Choice.ROCK == selectedChoice ? SELECTED_COLOR : Color.WHITE);
-        paperButton.setBackground(RPS.Choice.PAPER == selectedChoice ? SELECTED_COLOR : Color.WHITE);
-        scissorsButton.setBackground(RPS.Choice.SCISSORS == selectedChoice ? SELECTED_COLOR : Color.WHITE);
+        Component[] buttons = ((JPanel)getComponent(3)).getComponents();
+        for (Component comp : buttons) {
+            if (comp instanceof JButton) {
+                JButton button = (JButton) comp;
+                button.setEnabled(false);
+                if (button.getToolTipText().equals(getChoiceName(selectedChoice))) {
+                    button.setBackground(SELECTED_COLOR);
+                }
+            }
+        }
+    }
+
+    private String getChoiceName(RPS.Choice choice) {
+        return switch (choice) {
+            case ROCK -> "바위";
+            case PAPER -> "보";
+            case SCISSORS -> "가위";
+        };
     }
 
     public void startTimer(int seconds) {
@@ -124,82 +151,111 @@ public class RPSPanel extends JPanel {
             countdownTimer.stop();
         }
 
-        if (isParticipant) {
-            enableAllButtons(true);
-            selectedChoice = null;
-            updateButtonStates();
-        } else {
-            enableAllButtons(false);
-            statusLabel.setText("다른 플레이어들의 가위바위보를 기다리는 중...");
-        }
-
         countdownTimer = new Timer(1000, e -> {
             remainingTime--;
             timerLabel.setText(remainingTime + "초");
 
             if (remainingTime <= 0) {
                 countdownTimer.stop();
-                if (selectedChoice == null && isParticipant) {
+                if (selectedChoice == null && canParticipate) {
                     statusLabel.setText("시간이 초과되었습니다!");
-                    enableAllButtons(false);
+                    disableAllButtons();
                 }
             }
         });
         countdownTimer.start();
     }
 
-    private void enableAllButtons(boolean enabled) {
-        rockButton.setEnabled(enabled);
-        paperButton.setEnabled(enabled);
-        scissorsButton.setEnabled(enabled);
-    }
-
-    public void updatePlayers(String msg) {
-        String[] players = msg.split(",");
-        isParticipant = false;
-
-        for (String player : players) {
-            if (player.equals(playerName)) {
-                isParticipant = true;
-                break;
-            }
-        }
-
+    public void updatePlayersStatus(List<String> readyPlayers, List<String> waitingPlayers) {
         SwingUtilities.invokeLater(() -> {
-            playerPanel.removeAll();
-            playerPanel.setLayout(new GridLayout(1, players.length, 10, 0));
+            playersPanel.removeAll();
+            playersPanel.setLayout(new GridLayout(1, readyPlayers.size() + waitingPlayers.size(), 10, 0));
 
-            for (String player : players) {
-                JPanel playerCard = new JPanel();
-                playerCard.setLayout(new BoxLayout(playerCard, BoxLayout.Y_AXIS));
-                playerCard.setBorder(BorderFactory.createLineBorder(PRIMARY_COLOR, 2, true));
-                playerCard.setBackground(Color.WHITE);
-
-                JLabel nameLabel = new JLabel(player);
-                nameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-                nameLabel.setFont(CONTENT_FONT);
-
-                playerCard.add(Box.createVerticalStrut(10));
-                playerCard.add(nameLabel);
-                playerCard.add(Box.createVerticalStrut(10));
-
-                playerPanel.add(playerCard);
+            // 준비된 플레이어 표시
+            for (String player : readyPlayers) {
+                addPlayerCard(player, true);
             }
 
-            if (!isParticipant) {
-                enableAllButtons(false);
-                statusLabel.setText("다른 플레이어들의 가위바위보를 기다리는 중...");
+            // 대기중인 플레이어 표시
+            for (String player : waitingPlayers) {
+                addPlayerCard(player, false);
             }
 
-            playerPanel.revalidate();
-            playerPanel.repaint();
+            // 참가 가능한 플레이어인지 확인
+            canParticipate = readyPlayers.contains(playerName) || waitingPlayers.contains(playerName);
+
+            if (!canParticipate) {
+                statusLabel.setText("동점자들의 가위바위보를 기다리는 중...");
+                disableAllButtons();
+            } else {
+                statusLabel.setText("선택해주세요!");
+                if (selectedChoice == null) {
+                    enableAllButtons();
+                }
+            }
+
+            playersPanel.revalidate();
+            playersPanel.repaint();
         });
     }
 
+    private void addPlayerCard(String player, boolean isReady) {
+        JPanel playerCard = new JPanel();
+        playerCard.setLayout(new BoxLayout(playerCard, BoxLayout.Y_AXIS));
+        playerCard.setBorder(BorderFactory.createLineBorder(PRIMARY_COLOR, 2, true));
+        playerCard.setBackground(Color.WHITE);
+
+        JLabel nameLabel = new JLabel(player);
+        nameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        nameLabel.setFont(CONTENT_FONT);
+
+        if (player.equals(playerName)) {
+            nameLabel.setForeground(PRIMARY_COLOR);
+            nameLabel.setFont(new Font("맑은 고딕", Font.BOLD, 16));
+        }
+
+        JLabel statusLabel = new JLabel(isReady ? "준비 완료" : "대기 중");
+        statusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        statusLabel.setFont(new Font("맑은 고딕", Font.PLAIN, 12));
+        statusLabel.setForeground(isReady ? new Color(40, 167, 69) : new Color(108, 117, 125));
+
+        playerCard.add(Box.createVerticalStrut(10));
+        playerCard.add(nameLabel);
+        playerCard.add(Box.createVerticalStrut(5));
+        playerCard.add(statusLabel);
+        playerCard.add(Box.createVerticalStrut(10));
+
+        playersPanel.add(playerCard);
+    }
+
+    private void enableAllButtons() {
+        Component[] buttons = ((JPanel)getComponent(3)).getComponents();
+        for (Component comp : buttons) {
+            if (comp instanceof JButton) {
+                comp.setEnabled(true);
+                comp.setBackground(Color.WHITE);
+            }
+        }
+    }
+
+    private void disableAllButtons() {
+        Component[] buttons = ((JPanel)getComponent(3)).getComponents();
+        for (Component comp : buttons) {
+            if (comp instanceof JButton) {
+                comp.setEnabled(false);
+            }
+        }
+    }
+
     private ImageIcon loadResizedImageIcon(String path, int width, int height) {
-        ImageIcon icon = new ImageIcon(getClass().getResource(path));
-        Image img = icon.getImage().getScaledInstance(width, height, Image.SCALE_SMOOTH);
-        return new ImageIcon(img);
+        try {
+            ImageIcon icon = new ImageIcon(getClass().getResource(path));
+            Image img = icon.getImage().getScaledInstance(width, height, Image.SCALE_SMOOTH);
+            return new ImageIcon(img);
+        } catch (Exception e) {
+            System.err.println("이미지 로드 실패: " + path);
+            return null;
+        }
     }
 
     public void reset() {
@@ -207,12 +263,8 @@ public class RPSPanel extends JPanel {
             countdownTimer.stop();
         }
         selectedChoice = null;
-        updateButtonStates();
-        enableAllButtons(true);
+        enableAllButtons();
         statusLabel.setText("선택해주세요!");
         timerLabel.setText("10초");
-    }
-
-    public void updatePlayersStatus(List<String> readyPlayers, List<String> waitingPlayers) {
     }
 }

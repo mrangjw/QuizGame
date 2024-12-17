@@ -210,8 +210,8 @@ public class GamePanel extends JPanel {
                 return;
             }
 
-            if (content.startsWith("RPS_")) {
-                handleRPSMessage(content);
+            if (content.startsWith("START_RPS:")) {
+                firePropertyChange("gameRPS", null, content);
                 return;
             }
 
@@ -259,15 +259,13 @@ public class GamePanel extends JPanel {
         for (String entry : entries) {
             if (!entry.trim().isEmpty()) {
                 String[] parts = entry.split(":");
-                sortedScores.add(new AbstractMap.SimpleEntry<>(parts[0], Integer.parseInt(parts[1])));
+                if (parts.length == 2) {
+                    sortedScores.add(new AbstractMap.SimpleEntry<>(parts[0], Integer.parseInt(parts[1])));
+                }
             }
         }
 
         firePropertyChange("gameResult", null, sortedScores);
-    }
-
-    private void handleRPSMessage(String message) {
-        firePropertyChange("rpsMessage", null, message);
     }
 
     public void clearChat() {

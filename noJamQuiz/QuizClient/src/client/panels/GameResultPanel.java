@@ -22,7 +22,6 @@ public class GameResultPanel extends JPanel {
         setBorder(new EmptyBorder(20, 20, 20, 20));
         setBackground(Color.WHITE);
 
-        // 메달 이미지 로드
         goldMedal = loadResizedImageIcon("/resources/images/medal_gold.png", 60, 60);
         silverMedal = loadResizedImageIcon("/resources/images/medal_silver.png", 60, 60);
         bronzeMedal = loadResizedImageIcon("/resources/images/medal_bronze.png", 60, 60);
@@ -57,7 +56,6 @@ public class GameResultPanel extends JPanel {
             }
         }
 
-        // 스크롤 패널에 결과 패널 추가
         JScrollPane scrollPane = new JScrollPane(resultsPanel);
         scrollPane.setBorder(null);
         scrollPane.setBackground(Color.WHITE);
@@ -68,14 +66,8 @@ public class GameResultPanel extends JPanel {
         buttonPanel.setBackground(Color.WHITE);
         buttonPanel.setBorder(new EmptyBorder(20, 0, 0, 0));
 
-        // 다시하기 버튼
-        JButton restartButton = createStyledButton("다시하기", PRIMARY_COLOR);
-        restartButton.addActionListener(e -> {
-            firePropertyChange("restartGame", false, true);
-        });
-
-        // 그만하기 버튼
-        JButton exitButton = createStyledButton("그만하기", DANGER_COLOR);
+        // 종료하기 버튼
+        JButton exitButton = createStyledButton("종료하기", DANGER_COLOR);
         exitButton.addActionListener(e -> {
             int choice = JOptionPane.showConfirmDialog(
                     this,
@@ -84,21 +76,23 @@ public class GameResultPanel extends JPanel {
                     JOptionPane.YES_NO_OPTION,
                     JOptionPane.QUESTION_MESSAGE
             );
-
             if (choice == JOptionPane.YES_OPTION) {
-                firePropertyChange("exitGame", false, true);
+                SwingUtilities.invokeLater(() -> {
+                    firePropertyChange("exitGame", false, true);
+                });
             }
         });
 
-        // 로비로 돌아가기 버튼
-        JButton lobbyButton = createStyledButton("로비로 돌아가기", PRIMARY_COLOR);
-        lobbyButton.addActionListener(e -> {
-            firePropertyChange("exitToLobby", false, true);
+        // 방 나가기 버튼
+        JButton leaveButton = createStyledButton("방 나가기", PRIMARY_COLOR);
+        leaveButton.addActionListener(e -> {
+            SwingUtilities.invokeLater(() -> {
+                firePropertyChange("exitToLobby", false, true);
+            });
         });
 
-        buttonPanel.add(restartButton);
         buttonPanel.add(exitButton);
-        buttonPanel.add(lobbyButton);
+        buttonPanel.add(leaveButton);
         add(buttonPanel, BorderLayout.SOUTH);
 
         revalidate();
