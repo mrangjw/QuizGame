@@ -1,4 +1,3 @@
-
 package server;
 
 import model.Room;
@@ -124,10 +123,12 @@ public class QuizServer extends JFrame {
         }
     }
 
-    public synchronized Room createRoom(String name, String category, int maxPlayers, String hostName) {
+    public synchronized Room createRoom(String name, String category, int maxPlayers, String hostName,
+                                        int questionCount, int timePerQuestion) {
         try {
             Room.QuizCategory quizCategory = Room.QuizCategory.fromKoreanName(category);
-            Room room = new Room(roomIdCounter++, name, hostName, maxPlayers, quizCategory);
+            Room room = new Room(roomIdCounter++, name, hostName, maxPlayers, quizCategory,
+                    questionCount, timePerQuestion);
             rooms.put(room.getRoomId(), room);
             printDisplay(hostName + "님이 '" + name + "' 방을 생성했습니다.");
             broadcastRoomList();
@@ -186,7 +187,9 @@ public class QuizServer extends JFrame {
                         .append(room.getCategory().getKoreanName()).append(",")
                         .append(room.getHostName()).append(",")
                         .append(room.getPlayers().size()).append(",")
-                        .append(room.getMaxPlayers()).append(";");
+                        .append(room.getMaxPlayers()).append(",")
+                        .append(room.getQuestionCount()).append(",")
+                        .append(room.getTimePerQuestion()).append(";");
             }
         }
         broadcastMessage(roomList.toString());
@@ -228,7 +231,12 @@ public class QuizServer extends JFrame {
         if (message.startsWith("CREATE_ROOM:")) {
             try {
                 String[] parts = message.substring(12).split(",");
-                Room room = createRoom(parts[0], parts[1], Integer.parseInt(parts[2]), client.getPlayerName());
+                Room room = createRoom(parts[0],             // 방 이름
+                        parts[1],             // 카테고리
+                        Integer.parseInt(parts[2]), // 최대 인원
+                        client.getPlayerName(),
+                        Integer.parseInt(parts[3]), // 문제 개수
+                        Integer.parseInt(parts[4])); // 문제당 시간
                 if (room != null) {
                     client.send("JOIN_ROOM:" + room.getRoomId());
                 } else {
@@ -262,7 +270,7 @@ public class QuizServer extends JFrame {
                 Room room = rooms.get(roomId);
                 if (room != null && room.getHostName().equals(client.getPlayerName())) {
                     if (room.getPlayers().size() >= 2) {
-                        client.send("USE_GPT");
+                        client.send("SELECT_MODE");
                     } else {
                         client.send("게임 시작 실패: 최소 2명의 플레이어가 필요합니다.");
                     }
@@ -270,15 +278,18 @@ public class QuizServer extends JFrame {
             } catch (Exception e) {
                 client.send("게임 시작 실패: " + e.getMessage());
             }
-        } else if (message.startsWith("GPT_CHOICE:")) {
+        } else if (message.startsWith("MODE_CHOICE:")) {
             try {
-                boolean useGPT = message.substring(11).equals("Y");
+                String mode = message.substring(11);  // "GPT" 또는 "NORMAL"
+                boolean useGPT = mode.equals("GPT");
                 Room room = findPlayerRoom(client.getPlayerName());
                 if (room != null) {
+                    printDisplay(room.getRoomName() + " 방에서 " + (useGPT ? "GPT" : "일반") + " 모드로 게임을 시작합니다.");
                     GameManager gameManager = new GameManager(this, room.getRoomId(), useGPT);
                     gameManagers.put(room.getRoomId(), gameManager);
                     room.setGameStarted(true);
                     gameManager.startGame();
+                    broadcastToRoom(room.getRoomId(), "게임이 " + (useGPT ? "GPT" : "일반") + " 모드로 시작되었습니다.");
                 }
             } catch (Exception e) {
                 client.send("게임 시작 실패: " + e.getMessage());

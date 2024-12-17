@@ -10,6 +10,8 @@ public class Room {
     private Vector<String> players;
     private QuizCategory category;
     private boolean isGameStarted;
+    private int questionCount;
+    private int timePerQuestion;
 
     public enum QuizCategory {
         TOTAL("통합"),
@@ -37,12 +39,15 @@ public class Room {
         }
     }
 
-    public Room(int roomId, String roomName, String hostName, int maxPlayers, QuizCategory category) {
+    public Room(int roomId, String roomName, String hostName, int maxPlayers, QuizCategory category,
+                int questionCount, int timePerQuestion) {
         this.roomId = roomId;
         this.roomName = roomName;
         this.hostName = hostName;
         this.maxPlayers = maxPlayers;
         this.category = category;
+        this.questionCount = questionCount;
+        this.timePerQuestion = timePerQuestion;
         this.players = new Vector<>();
         this.players.add(hostName);
         this.isGameStarted = false;
@@ -57,6 +62,8 @@ public class Room {
     public QuizCategory getCategory() { return category; }
     public boolean isGameStarted() { return isGameStarted; }
     public void setGameStarted(boolean gameStarted) { isGameStarted = gameStarted; }
+    public int getQuestionCount() { return questionCount; }
+    public int getTimePerQuestion() { return timePerQuestion; }
 
     public boolean addPlayer(String playerName) {
         if (players.size() < maxPlayers && !players.contains(playerName)) {
