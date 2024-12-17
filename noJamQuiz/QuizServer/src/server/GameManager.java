@@ -14,7 +14,6 @@ public class GameManager {
     private List<Quiz> quizList;
     private int currentQuizIndex;
     private Map<String, Integer> playerScores;
-    private Map<String, Boolean> currentQuizAnswered;
     private Timer quizTimer;
     private boolean isGameStarted;
     private int remainingTime;
@@ -26,7 +25,6 @@ public class GameManager {
         this.roomId = roomId;
         this.quizList = new ArrayList<>();
         this.playerScores = new HashMap<>();
-        this.currentQuizAnswered = new HashMap<>();
         this.currentQuizIndex = 0;
         this.isGameStarted = false;
         this.useGPT = useGPT;
@@ -67,9 +65,11 @@ public class GameManager {
     private void initializeFileQuizzes() {
         QuizDataDAO quizData = new QuizDataDAO();
 
+        // 현재 작업 디렉토리 출력
         String currentPath = System.getProperty("user.dir");
         server.printDisplay("현재 작업 디렉토리: " + currentPath);
 
+        // 파일 존재 여부 확인
         File quizFile = new File("Data/Quiz1.dat");
         server.printDisplay("Quiz1.dat 파일 경로: " + quizFile.getAbsolutePath());
         server.printDisplay("파일 존재 여부: " + quizFile.exists());
@@ -108,67 +108,18 @@ public class GameManager {
             isGameStarted = true;
             playerScores.clear();
             currentQuizIndex = 0;
-            resetCurrentQuizAnswered();
-            // 모든 플레이어의 초기 점수를 0으로 설정
-            Room room = server.getRoom(roomId);
-            if (room != null) {
-                for (String playerName : room.getPlayers()) {
-                    server.broadcastToRoom(roomId, "SCORE:" + playerName + ":0");
-                }
-            }
             sendNextQuiz();
-        }
-    }
-
-    private void resetCurrentQuizAnswered() {
-        currentQuizAnswered.clear();
-        Room room = server.getRoom(roomId);
-        if (room != null) {
-            for (String playerName : room.getPlayers()) {
-                currentQuizAnswered.put(playerName, false);
-            }
         }
     }
 
     private void sendNextQuiz() {
         if (currentQuizIndex < quizList.size()) {
             Quiz currentQuiz = quizList.get(currentQuizIndex);
-            resetCurrentQuizAnswered();
-            // 퀴즈 문제만 먼저 전송
             server.broadcastToRoom(roomId, "QUIZ:" + currentQuiz.toString());
-            // 타이머 시작
             startQuizTimer(currentQuiz.getTimeLimit());
         } else {
             endGame();
         }
-    }
-
-    public void handleAnswer(String playerName, String answer) {
-        if (currentQuizIndex >= quizList.size() || !isGameStarted) return;
-        if (currentQuizAnswered.getOrDefault(playerName, false)) return;
-
-        Quiz currentQuiz = quizList.get(currentQuizIndex);
-        currentQuizAnswered.put(playerName, true);
-
-        if (currentQuiz.checkAnswer(answer)) {
-            int score = currentQuiz.calculateScore(remainingTime);
-            playerScores.merge(playerName, score, Integer::sum);
-            // 정답 메시지와 점수 업데이트를 별도로 전송
-            server.broadcastToRoom(roomId, playerName + "님 정답입니다.");
-            server.broadcastToRoom(roomId, "SCORE:" + playerName + ":" + playerScores.get(playerName));
-
-            if (allPlayersAnswered()) {
-                quizTimer.cancel();
-                currentQuizIndex++;
-                sendNextQuiz();
-            }
-        } else {
-            server.broadcastToRoom(roomId, playerName + "님 오답입니다.");
-        }
-    }
-
-    private boolean allPlayersAnswered() {
-        return currentQuizAnswered.values().stream().allMatch(answered -> answered);
     }
 
     private void startQuizTimer(int seconds) {
@@ -192,51 +143,21 @@ public class GameManager {
     private void timeUp() {
         quizTimer.cancel();
         Quiz currentQuiz = quizList.get(currentQuizIndex);
-
-        List<String> correctPlayers = new ArrayList<>();
-        List<String> incorrectPlayers = new ArrayList<>();
-
-        for (Map.Entry<String, Boolean> entry : currentQuizAnswered.entrySet()) {
-            if (!entry.getValue()) {
-                incorrectPlayers.add(entry.getKey());
-            } else if (playerScores.containsKey(entry.getKey())) {
-                correctPlayers.add(entry.getKey());
-            }
-        }
-
-        StringBuilder result = new StringBuilder();
-        result.append("시간이 종료되었습니다.\n");
-        result.append("정답: ").append(currentQuiz.getAnswer()).append("\n");
-
-        if (correctPlayers.isEmpty()) {
-            result.append("아쉽게도 이번 문제는 정답자가 없습니다.");
-        } else {
-            result.append("정답자: ").append(String.join(", ", correctPlayers));
-        }
-
-        if (!incorrectPlayers.isEmpty()) {
-            result.append("\n미응답: ").append(String.join(", ", incorrectPlayers));
-        }
-
-        server.broadcastToRoom(roomId, result.toString());
+        server.broadcastToRoom(roomId, "시간 종료! 정답은 '" + currentQuiz.getAnswer() + "' 입니다.");
         currentQuizIndex++;
         sendNextQuiz();
     }
 
-    public void playerLeft(String playerName) {
-        if (playerScores.containsKey(playerName)) {
-            int finalScore = playerScores.get(playerName);
+    public void handleAnswer(String playerName, String answer) {
+        if (currentQuizIndex >= quizList.size()) return;
+
+        Quiz currentQuiz = quizList.get(currentQuizIndex);
+        if (currentQuiz.checkAnswer(answer)) {
+            int score = currentQuiz.calculateScore(remainingTime);
+            playerScores.merge(playerName, score, Integer::sum);
             server.broadcastToRoom(roomId,
-                    String.format("%s님이 게임을 중단하셨습니다. (최종 점수: %d점)",
-                            playerName, finalScore));
-        }
+                    String.format("%s님 정답! (%d점)", playerName, score));
 
-        currentQuizAnswered.remove(playerName);
-
-        Room room = server.getRoom(roomId);
-        if (room != null && room.getPlayers().size() <= 1) {
-            endGame();
-        } else if (isGameStarted && allPlayersAnswered()) {
             quizTimer.cancel();
             currentQuizIndex++;
             sendNextQuiz();
@@ -252,7 +173,7 @@ public class GameManager {
         List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>(playerScores.entrySet());
         sortedScores.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
 
-        StringBuilder result = new StringBuilder("게임이 종료되었습니다!\n최종 결과:\n");
+        StringBuilder result = new StringBuilder("게임 종료!\n최종 결과:\n");
         for (Map.Entry<String, Integer> entry : sortedScores) {
             result.append(String.format("%s: %d점\n",
                     entry.getKey(), entry.getValue()));

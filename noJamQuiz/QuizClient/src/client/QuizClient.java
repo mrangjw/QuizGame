@@ -1,3 +1,4 @@
+
 package client;
 
 import model.Room;
@@ -32,7 +33,7 @@ public class QuizClient extends JFrame {
         mainPanel = new JPanel(cardLayout);
 
         lobbyGUI = new LobbyGUI(this);
-        gameGUI = new ClientGUI(this, playerName);  // playerName 전달
+        gameGUI = new ClientGUI(this);
 
         mainPanel.add(lobbyGUI, "LOBBY");
         mainPanel.add(gameGUI, "GAME");
@@ -57,6 +58,7 @@ public class QuizClient extends JFrame {
 
             receiveThread = new Thread(this::receiveMessages);
             receiveThread.start();
+            showMessage("서버에 연결되었습니다.");
         } catch (IOException e) {
             showMessage("서버 연결 실패: " + e.getMessage());
         }
@@ -82,6 +84,58 @@ public class QuizClient extends JFrame {
         }
     }
 
+    public void createRoom(String roomName, String category, int maxPlayers) {
+        try {
+            if (socket != null && !socket.isClosed() && out != null) {
+                String message = String.format("CREATE_ROOM:%s,%s,%d", roomName, category, maxPlayers);
+                out.writeObject(message);
+                out.flush();
+            } else {
+                showMessage("서버와 연결되어 있지 않습니다.");
+            }
+        } catch (IOException e) {
+            showMessage("방 생성 실패: " + e.getMessage());
+        }
+    }
+
+    public void startGame() {
+        try {
+            if (currentRoomId != -1) {
+                out.writeObject("START_GAME:" + currentRoomId);
+                out.flush();
+            }
+        } catch (IOException e) {
+            showMessage("게임 시작 실패: " + e.getMessage());
+        }
+    }
+
+    public void joinRoom(int roomId) {
+        try {
+            if (socket != null && !socket.isClosed() && out != null) {
+                out.writeObject("JOIN_ROOM:" + roomId);
+                out.flush();
+            } else {
+                showMessage("서버와 연결되어 있지 않습니다.");
+            }
+        } catch (IOException e) {
+            showMessage("방 참가 실패: " + e.getMessage());
+        }
+    }
+
+    public void leaveRoom() {
+        try {
+            if (currentRoomId != -1) {
+                out.writeObject("LEAVE_ROOM:" + currentRoomId);
+                out.flush();
+                currentRoomId = -1;
+                cardLayout.show(mainPanel, "LOBBY");
+                gameGUI.clearChat();
+            }
+        } catch (IOException e) {
+            showMessage("방 나가기 실패: " + e.getMessage());
+        }
+    }
+
     private void receiveMessages() {
         try {
             while (!Thread.interrupted() && socket != null && !socket.isClosed()) {
@@ -101,28 +155,21 @@ public class QuizClient extends JFrame {
     }
 
     private void handleMessage(String message) {
-        SwingUtilities.invokeLater(() -> {
-            if (message.startsWith("ROOM_LIST:")) {
-                handleRoomList(message);
-            } else if (message.startsWith("JOIN_ROOM:")) {
-                currentRoomId = Integer.parseInt(message.substring(10));
-                cardLayout.show(mainPanel, "GAME");
-                gameGUI.clearChat();
-            } else if (message.equals("USE_GPT")) {
-                handleGPTChoice();
-            } else if (message.equals("LOBBY:")) {
-                currentRoomId = -1;
-                cardLayout.show(mainPanel, "LOBBY");
-            } else {
-                // 게임 중이면 ClientGUI에게 메시지 전달
-                if (currentRoomId != -1) {
-                    gameGUI.displayMessage(message);
-                } else {
-                    // 로비에서는 LobbyGUI에게 메시지 전달
-                    lobbyGUI.displayMessage(message);
-                }
-            }
-        });
+        if (message.startsWith("ROOM_LIST:")) {
+            handleRoomList(message);
+        } else if (message.startsWith("JOIN_ROOM:")) {
+            currentRoomId = Integer.parseInt(message.substring(10));
+            cardLayout.show(mainPanel, "GAME");
+        } else if (message.startsWith("GAME_START:")) {
+            cardLayout.show(mainPanel, "GAME");
+        } else if (message.equals("LOBBY:")) {
+            currentRoomId = -1;
+            cardLayout.show(mainPanel, "LOBBY");
+        } else if (message.equals("USE_GPT")) {
+            handleGPTChoice();
+        } else {
+            showMessage(message);
+        }
     }
 
     private void handleRoomList(String message) {
@@ -163,37 +210,6 @@ public class QuizClient extends JFrame {
         sendMessage("GPT_CHOICE:" + (choice == JOptionPane.YES_OPTION ? "Y" : "N"));
     }
 
-    public void createRoom(String roomName, String category, int maxPlayers) {
-        if (socket != null && !socket.isClosed() && out != null) {
-            sendMessage(String.format("CREATE_ROOM:%s,%s,%d", roomName, category, maxPlayers));
-        } else {
-            showMessage("서버와 연결되어 있지 않습니다.");
-        }
-    }
-
-    public void startGame() {
-        if (currentRoomId != -1) {
-            sendMessage("START_GAME:" + currentRoomId);
-        }
-    }
-
-    public void joinRoom(int roomId) {
-        if (socket != null && !socket.isClosed() && out != null) {
-            sendMessage("JOIN_ROOM:" + roomId);
-        } else {
-            showMessage("서버와 연결되어 있지 않습니다.");
-        }
-    }
-
-    public void leaveRoom() {
-        if (currentRoomId != -1) {
-            sendMessage("LEAVE_ROOM:" + currentRoomId);
-            currentRoomId = -1;
-            cardLayout.show(mainPanel, "LOBBY");
-            gameGUI.clearChat();
-        }
-    }
-
     public void sendMessage(String message) {
         try {
             if (socket != null && !socket.isClosed() && out != null) {
@@ -208,19 +224,24 @@ public class QuizClient extends JFrame {
     }
 
     public void sendAnswer(String answer) {
-        if (!answer.trim().isEmpty()) {
-            sendMessage("ANSWER:" + answer);
+        try {
+            if (socket != null && !socket.isClosed() && out != null) {
+                out.writeObject("ANSWER:" + answer);
+                out.flush();
+            } else {
+                showMessage("서버와 연결되어 있지 않습니다.");
+            }
+        } catch (IOException e) {
+            showMessage("답변 전송 실패: " + e.getMessage());
         }
     }
 
     private void showMessage(String message) {
-        SwingUtilities.invokeLater(() -> {
-            if (currentRoomId == -1) {
-                lobbyGUI.displayMessage(message);
-            } else {
-                gameGUI.displayMessage(message);
-            }
-        });
+        if (currentRoomId == -1) {
+            lobbyGUI.displayMessage(message);
+        } else {
+            gameGUI.displayMessage(message);
+        }
     }
 
     @Override
