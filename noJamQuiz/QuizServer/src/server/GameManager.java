@@ -32,11 +32,6 @@ public class GameManager {
         this.useGPT = useGPT;
         if (useGPT) {
             this.gptConnector = new GPTConnector();
-            server.printDisplay("GPT 모드로 게임을 시작합니다.");
-            server.broadcastToRoom(roomId, "GPT 모드로 게임이 시작됩니다. 잠시만 기다려주세요...");
-        } else {
-            server.printDisplay("일반 모드로 게임을 시작합니다.");
-            server.broadcastToRoom(roomId, "일반 모드로 게임이 시작됩니다.");
         }
         initializeQuizzes();
     }
@@ -52,52 +47,24 @@ public class GameManager {
     private void initializeGPTQuizzes() {
         Room room = server.getRoom(roomId);
         try {
-            int targetQuizCount = room.getQuestionCount();
-            server.printDisplay("GPT를 통해 " + targetQuizCount + "개의 퀴즈를 생성합니다.");
-            server.broadcastToRoom(roomId, "GPT를 통해 퀴즈를 생성하고 있습니다. 잠시만 기다려주세요...");
-
-            for (int i = 0; i < targetQuizCount; i++) {
-                String response = gptConnector.generateQuiz(room.getCategory().getKoreanName());
-                if (response == null) {
-                    throw new Exception("GPT 응답이 null입니다.");
-                }
-
-                Quiz quiz = gptConnector.parseQuizResponse(response);
-                if (quiz == null) {
-                    throw new Exception("퀴즈 파싱에 실패했습니다.");
-                }
-
-                quiz.setTimeLimit(room.getTimePerQuestion());
+            String response = gptConnector.generateQuiz(room.getCategory().getKoreanName());
+            Quiz quiz = gptConnector.parseQuizResponse(response);
+            if (quiz != null) {
+                quiz.setTimeLimit(20);
                 quiz.setPoints(10);
                 quizList.add(quiz);
-
-                server.printDisplay("GPT 퀴즈 생성 완료 (" + (i + 1) + "/" + targetQuizCount + ")");
-                server.broadcastToRoom(roomId, "퀴즈 생성중... (" + (i + 1) + "/" + targetQuizCount + ")");
-
-                // API 호출 간격 조절
-                Thread.sleep(2000);
-            }
-
-            server.printDisplay("GPT 퀴즈 생성이 모두 완료되었습니다. 총 " + quizList.size() + "개의 문제");
-            server.broadcastToRoom(roomId, "모든 퀴즈가 준비되었습니다. 게임을 시작합니다!");
-
-        } catch (Exception e) {
-            server.printDisplay("GPT 퀴즈 생성 실패: " + e.getMessage());
-            if (!quizList.isEmpty()) {
-                // 이미 생성된 퀴즈가 있다면 그것으로 진행
-                server.printDisplay("생성된 " + quizList.size() + "개의 퀴즈로 진행합니다.");
-                server.broadcastToRoom(roomId, "퀴즈 생성이 일부 완료되었습니다. " + quizList.size() + "개의 문제로 진행합니다.");
+                server.printDisplay("GPT 퀴즈 생성 완료");
             } else {
-                // 아예 실패한 경우에만 일반 모드로 전환
-                server.printDisplay("GPT 퀴즈 생성에 완전히 실패했습니다. 일반 모드로 전환합니다.");
-                server.broadcastToRoom(roomId, "GPT 퀴즈 생성에 실패했습니다. 일반 모드로 전환됩니다.");
+                server.printDisplay("GPT 퀴즈 생성 실패. 파일 퀴즈로 전환합니다.");
                 initializeFileQuizzes();
             }
+        } catch (Exception e) {
+            server.printDisplay("GPT 퀴즈 생성 실패: " + e.getMessage());
+            initializeFileQuizzes();
         }
     }
 
     private void initializeFileQuizzes() {
-        Room room = server.getRoom(roomId);
         QuizDataDAO quizData = new QuizDataDAO();
 
         String currentPath = System.getProperty("user.dir");
@@ -117,18 +84,13 @@ public class GameManager {
                         Quiz.QuizType.SHORT_ANSWER,
                         "일반상식"
                 );
-                quiz.setTimeLimit(room.getTimePerQuestion());
+                quiz.setTimeLimit(20);
                 quiz.setPoints(10);
                 quizList.add(quiz);
             }
 
             Collections.shuffle(quizList);
-            while (quizList.size() > room.getQuestionCount()) {
-                quizList.remove(quizList.size() - 1);
-            }
-
             server.printDisplay("파일 퀴즈 데이터 로드 완료: " + quizList.size() + "개의 문제");
-            server.broadcastToRoom(roomId, "퀴즈 준비가 완료되었습니다!");
         } else {
             server.printDisplay("퀴즈 파일 로드 실패. 기본 퀴즈를 사용합니다.");
             Quiz defaultQuiz = new Quiz(
@@ -137,7 +99,6 @@ public class GameManager {
                     Quiz.QuizType.SHORT_ANSWER,
                     "기본"
             );
-            defaultQuiz.setTimeLimit(room.getTimePerQuestion());
             quizList.add(defaultQuiz);
         }
     }
@@ -148,14 +109,12 @@ public class GameManager {
             playerScores.clear();
             currentQuizIndex = 0;
             resetCurrentQuizAnswered();
-
+            // 모든 플레이어의 초기 점수를 0으로 설정
             Room room = server.getRoom(roomId);
             if (room != null) {
-                // 모든 플레이어의 초기 점수를 0으로 설정
                 for (String playerName : room.getPlayers()) {
                     server.broadcastToRoom(roomId, "SCORE:" + playerName + ":0");
                 }
-                server.broadcastToRoom(roomId, "게임을 시작합니다!");
             }
             sendNextQuiz();
         }
@@ -175,11 +134,9 @@ public class GameManager {
         if (currentQuizIndex < quizList.size()) {
             Quiz currentQuiz = quizList.get(currentQuizIndex);
             resetCurrentQuizAnswered();
-
-            server.broadcastToRoom(roomId, String.format("\n===== 문제 %d/%d =====",
-                    currentQuizIndex + 1, quizList.size()));
+            // 퀴즈 문제만 먼저 전송
             server.broadcastToRoom(roomId, "QUIZ:" + currentQuiz.toString());
-
+            // 타이머 시작
             startQuizTimer(currentQuiz.getTimeLimit());
         } else {
             endGame();
@@ -194,9 +151,10 @@ public class GameManager {
         currentQuizAnswered.put(playerName, true);
 
         if (currentQuiz.checkAnswer(answer)) {
-            int score = currentQuiz.getPoints();
+            int score = currentQuiz.calculateScore(remainingTime);
             playerScores.merge(playerName, score, Integer::sum);
-            server.broadcastToRoom(roomId, playerName + "님 정답입니다!");
+            // 정답 메시지와 점수 업데이트를 별도로 전송
+            server.broadcastToRoom(roomId, playerName + "님 정답입니다.");
             server.broadcastToRoom(roomId, "SCORE:" + playerName + ":" + playerScores.get(playerName));
 
             if (allPlayersAnswered()) {
@@ -294,47 +252,12 @@ public class GameManager {
         List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>(playerScores.entrySet());
         sortedScores.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
 
-        Map<Integer, List<String>> scoreGroups = new HashMap<>();
+        StringBuilder result = new StringBuilder("게임이 종료되었습니다!\n최종 결과:\n");
         for (Map.Entry<String, Integer> entry : sortedScores) {
-            scoreGroups.computeIfAbsent(entry.getValue(), k -> new ArrayList<>())
-                    .add(entry.getKey());
+            result.append(String.format("%s: %d점\n",
+                    entry.getKey(), entry.getValue()));
         }
-
-        int topScore = sortedScores.isEmpty() ? 0 : sortedScores.get(0).getValue();
-        List<String> topPlayers = scoreGroups.get(topScore);
-
-        if (topPlayers != null && topPlayers.size() > 1) {
-            server.broadcastToRoom(roomId, "동점자가 발생했습니다! 가위바위보로 승자를 결정합니다.");
-            server.broadcastToRoom(roomId, "RPS_START:" + String.join(",", topPlayers));
-        } else {
-            sendFinalResults(sortedScores, false);
-        }
-    }
-
-    private void sendFinalResults(List<Map.Entry<String, Integer>> sortedScores, boolean rpsDecided) {
-        StringBuilder result = new StringBuilder("GAME_END:");
-        if (rpsDecided) {
-            result.append("RPS_DECIDED:");
-        }
-
-        for (Map.Entry<String, Integer> entry : sortedScores) {
-            result.append(entry.getKey()).append(",")
-                    .append(entry.getValue()).append(";");
-        }
-
         server.broadcastToRoom(roomId, result.toString());
-    }
-
-    public void handleRPSResult(String winner, List<String> players) {
-        for (String player : players) {
-            if (player.equals(winner)) {
-                playerScores.put(player, playerScores.get(player) + 1);
-            }
-        }
-
-        List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>(playerScores.entrySet());
-        sortedScores.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
-        sendFinalResults(sortedScores, true);
     }
 
     public boolean isGameInProgress() {

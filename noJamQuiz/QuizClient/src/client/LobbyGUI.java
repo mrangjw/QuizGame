@@ -58,16 +58,14 @@ public class LobbyGUI extends JPanel {
     private void showCreateRoomDialog() {
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "방 만들기", true);
         dialog.setLayout(new BorderLayout(10, 10));
-        dialog.setSize(300, 300);
+        dialog.setSize(300, 200);
 
-        JPanel inputPanel = new JPanel(new GridLayout(5, 2, 5, 5));
+        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 5, 5));
         inputPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
         JTextField roomNameField = new JTextField();
         JComboBox<String> categoryBox = new JComboBox<>(new String[]{"통합", "경제", "사회", "넌센스"});
         JSpinner playerCountSpinner = new JSpinner(new SpinnerNumberModel(2, 2, 6, 1));
-        JSpinner questionCountSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 20, 1));
-        JSpinner timePerQuestionSpinner = new JSpinner(new SpinnerNumberModel(30, 10, 60, 5));
 
         inputPanel.add(new JLabel("방 제목:"));
         inputPanel.add(roomNameField);
@@ -75,10 +73,6 @@ public class LobbyGUI extends JPanel {
         inputPanel.add(categoryBox);
         inputPanel.add(new JLabel("최대 인원:"));
         inputPanel.add(playerCountSpinner);
-        inputPanel.add(new JLabel("문제 개수:"));
-        inputPanel.add(questionCountSpinner);
-        inputPanel.add(new JLabel("문제당 시간(초):"));
-        inputPanel.add(timePerQuestionSpinner);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         JButton createButton = new JButton("방 만들기");
@@ -91,10 +85,8 @@ public class LobbyGUI extends JPanel {
 
             String category = (String) categoryBox.getSelectedItem();
             int maxPlayers = (Integer) playerCountSpinner.getValue();
-            int questionCount = (Integer) questionCountSpinner.getValue();
-            int timePerQuestion = (Integer) timePerQuestionSpinner.getValue();
 
-            client.createRoom(roomName, category, maxPlayers, questionCount, timePerQuestion);
+            client.createRoom(roomName, category, maxPlayers);
             dialog.dispose();
         });
 
@@ -143,10 +135,9 @@ public class LobbyGUI extends JPanel {
         ));
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
 
-        String roomInfo = String.format("<html><b>%s</b><br>방장: %s | 카테고리: %s | 참가자: %d/%d<br>문제 수: %d문제 | 제한시간: %d초</html>",
+        String roomInfo = String.format("<html><b>%s</b><br>방장: %s | 카테고리: %s | 참가자: %d/%d</html>",
                 room.getRoomName(), room.getHostName(), room.getCategory().getKoreanName(),
-                room.getPlayers().size(), room.getMaxPlayers(),
-                room.getQuestionCount(), room.getTimePerQuestion());
+                room.getPlayers().size(), room.getMaxPlayers());
 
         JLabel infoLabel = new JLabel(roomInfo);
         infoLabel.setFont(new Font("맑은 고딕", Font.PLAIN, 12));
