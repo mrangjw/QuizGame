@@ -1,16 +1,23 @@
 package client;
 
+import client.panels.GamePanel;
+import client.panels.GameResultPanel;
+import client.panels.RPSPanel;
+import model.RPS;
 import model.Room;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
 import java.io.*;
 import java.net.*;
-import java.util.ArrayList;
+import java.util.*;
+import java.util.List;
 
 public class QuizClient extends JFrame {
-    private ClientGUI gameGUI;
+    private GamePanel gamePanel;
     private LobbyGUI lobbyGUI;
+    private RPSPanel rpsPanel;
+    private GameResultPanel resultPanel;
     private CardLayout cardLayout;
     private JPanel mainPanel;
 
@@ -27,15 +34,57 @@ public class QuizClient extends JFrame {
         initFrame();
     }
 
+    public String getPlayerName() {
+        return this.playerName;
+    }
+
     private void initComponents() {
         cardLayout = new CardLayout();
         mainPanel = new JPanel(cardLayout);
 
         lobbyGUI = new LobbyGUI(this);
-        gameGUI = new ClientGUI(this, playerName);  // playerName 전달
+        gamePanel = new GamePanel(this);
+        rpsPanel = new RPSPanel(playerName);
+        resultPanel = new GameResultPanel();
+
+        // RPS 패널 이벤트 처리
+        rpsPanel.addPropertyChangeListener("choiceMade", evt -> {
+            RPS.Choice choice = (RPS.Choice) evt.getNewValue();
+            sendMessage("RPS_CHOICE:" + choice.name());
+        });
+
+        // 결과 패널 이벤트 처리
+        resultPanel.addPropertyChangeListener("exitToLobby", evt -> {
+            if ((Boolean) evt.getNewValue()) {
+                leaveRoom();
+            }
+        });
+
+        // GamePanel 이벤트 처리
+        gamePanel.addPropertyChangeListener("gameResult", evt -> {
+            @SuppressWarnings("unchecked")
+            List<Map.Entry<String, Integer>> sortedScores =
+                    (List<Map.Entry<String, Integer>>) evt.getNewValue();
+            cardLayout.show(mainPanel, "RESULT");
+            resultPanel.displayResults(sortedScores);
+        });
+
+        gamePanel.addPropertyChangeListener("rpsMessage", evt -> {
+            String message = (String) evt.getNewValue();
+            if (message.startsWith("START_RPS:")) {
+                cardLayout.show(mainPanel, "RPS");
+                rpsPanel.startTimer(10);
+            } else if (message.startsWith("RPS_STATUS:")) {
+                handleRPSStatus(message);
+            } else if (message.startsWith("RPS_RESULT:")) {
+                handleRPSResult(message);
+            }
+        });
 
         mainPanel.add(lobbyGUI, "LOBBY");
-        mainPanel.add(gameGUI, "GAME");
+        mainPanel.add(gamePanel, "GAME");
+        mainPanel.add(rpsPanel, "RPS");
+        mainPanel.add(resultPanel, "RESULT");
 
         cardLayout.show(mainPanel, "LOBBY");
     }
@@ -107,22 +156,69 @@ public class QuizClient extends JFrame {
             } else if (message.startsWith("JOIN_ROOM:")) {
                 currentRoomId = Integer.parseInt(message.substring(10));
                 cardLayout.show(mainPanel, "GAME");
-                gameGUI.clearChat();
+                gamePanel.clearChat();
             } else if (message.equals("USE_GPT")) {
                 handleGPTChoice();
             } else if (message.equals("LOBBY:")) {
                 currentRoomId = -1;
                 cardLayout.show(mainPanel, "LOBBY");
+            } else if (message.startsWith("START_RPS:")) {
+                handleRPSStart(message);
+            } else if (message.startsWith("RPS_STATUS:")) {
+                handleRPSStatus(message);
+            } else if (message.startsWith("RPS_RESULT:")) {
+                handleRPSResult(message);
+            } else if (message.startsWith("GAME_RESULT:")) {
+                handleGameResult(message);
             } else {
-                // 게임 중이면 ClientGUI에게 메시지 전달
                 if (currentRoomId != -1) {
-                    gameGUI.displayMessage(message);
+                    gamePanel.displayMessage(message);
                 } else {
-                    // 로비에서는 LobbyGUI에게 메시지 전달
                     lobbyGUI.displayMessage(message);
                 }
             }
         });
+    }
+
+    private void handleRPSStart(String message) {
+        cardLayout.show(mainPanel, "RPS");
+        rpsPanel.startTimer(10);
+    }
+
+    private void handleRPSStatus(String message) {
+        String[] parts = message.substring(11).split(";");
+        List<String> readyPlayers = new ArrayList<>();
+        List<String> waitingPlayers = new ArrayList<>();
+
+        for (String player : parts) {
+            String[] playerInfo = player.split(":");
+            if (playerInfo[1].equals("READY")) {
+                readyPlayers.add(playerInfo[0]);
+            } else {
+                waitingPlayers.add(playerInfo[0]);
+            }
+        }
+
+        rpsPanel.updatePlayersStatus(readyPlayers, waitingPlayers);
+    }
+
+    private void handleRPSResult(String message) {
+        String result = message.substring(11);
+        JOptionPane.showMessageDialog(this, result, "가위바위보 결과", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void handleGameResult(String message) {
+        String resultData = message.substring(12);
+        String[] entries = resultData.split(";");
+        List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>();
+
+        for (String entry : entries) {
+            String[] parts = entry.split(":");
+            sortedScores.add(new AbstractMap.SimpleEntry<>(parts[0], Integer.parseInt(parts[1])));
+        }
+
+        cardLayout.show(mainPanel, "RESULT");
+        resultPanel.displayResults(sortedScores);
     }
 
     private void handleRoomList(String message) {
@@ -141,15 +237,10 @@ public class QuizClient extends JFrame {
                 int currentPlayers = Integer.parseInt(parts[4]);
                 int maxPlayers = Integer.parseInt(parts[5]);
 
-                // 방 목록 표시용으로는 기본값을 사용
-                int defaultProblemCount = 5;  // 기본 문제 수
-                int defaultTimeLimit = 30;     // 기본 제한 시간
-
                 Room room = new Room(roomId, roomName, hostName, maxPlayers, category,
-                        defaultProblemCount, defaultTimeLimit);
+                        5, 30);
 
-                // 현재 참가자 수를 맞추기 위해 플레이어 추가
-                for (int i = 1; i < currentPlayers; i++) {  // hostName은 이미 추가되어 있으므로 1부터 시작
+                for (int i = 1; i < currentPlayers; i++) {
                     room.addPlayer("Player " + i);
                 }
 
@@ -202,7 +293,7 @@ public class QuizClient extends JFrame {
             sendMessage("LEAVE_ROOM:" + currentRoomId);
             currentRoomId = -1;
             cardLayout.show(mainPanel, "LOBBY");
-            gameGUI.clearChat();
+            gamePanel.clearChat();
         }
     }
 
@@ -225,12 +316,18 @@ public class QuizClient extends JFrame {
         }
     }
 
+    public void sendRPSChoice(RPS.Choice choice) {
+        if (!choice.toString().trim().isEmpty()) {
+            sendMessage("RPS_CHOICE:" + choice.name());
+        }
+    }
+
     private void showMessage(String message) {
         SwingUtilities.invokeLater(() -> {
             if (currentRoomId == -1) {
                 lobbyGUI.displayMessage(message);
             } else {
-                gameGUI.displayMessage(message);
+                gamePanel.displayMessage(message);
             }
         });
     }

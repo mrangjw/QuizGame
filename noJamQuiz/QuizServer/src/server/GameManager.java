@@ -1,12 +1,14 @@
 package server;
 
 import model.Quiz;
+import model.RPS;
 import model.QuizDataDAO;
 import model.QuestionDTO;
 import model.Room;
 
 import java.io.File;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class GameManager {
     private QuizServer server;
@@ -21,6 +23,12 @@ public class GameManager {
     private GPTConnector gptConnector;
     private boolean useGPT;
 
+    // RPS 관련 필드
+    private Map<String, RPS.Choice> rpsChoices;
+    private boolean rpsInProgress;
+    private Timer rpsTimer;
+    private List<String> tiedPlayers;
+
     public GameManager(QuizServer server, int roomId, boolean useGPT) {
         this.server = server;
         this.roomId = roomId;
@@ -30,6 +38,9 @@ public class GameManager {
         this.currentQuizIndex = 0;
         this.isGameStarted = false;
         this.useGPT = useGPT;
+        this.rpsChoices = new HashMap<>();
+        this.rpsInProgress = false;
+
         if (useGPT) {
             this.gptConnector = new GPTConnector();
         }
@@ -38,8 +49,12 @@ public class GameManager {
 
     private void initializeQuizzes() {
         Room room = server.getRoom(roomId);
+        if (room == null) return;
+
         int targetProblemCount = room.getProblemCount();
         int timeLimit = room.getTimeLimit();
+
+        quizList.clear();
 
         if (useGPT) {
             for (int i = 0; i < targetProblemCount; i++) {
@@ -47,7 +62,6 @@ public class GameManager {
                     String response = gptConnector.generateQuiz(room.getCategory().getKoreanName());
                     Quiz quiz = gptConnector.parseQuizResponse(response);
                     if (quiz != null) {
-                        // 방에서 설정한 제한시간을 적용
                         quiz.setTimeLimit(timeLimit);
                         quiz.setPoints(10);
                         quizList.add(quiz);
@@ -99,6 +113,7 @@ public class GameManager {
                     "기본"
             );
             defaultQuiz.setTimeLimit(timeLimit);
+            defaultQuiz.setPoints(10);
             quizList.add(defaultQuiz);
         }
     }
@@ -113,10 +128,23 @@ public class GameManager {
             if (room != null) {
                 for (String playerName : room.getPlayers()) {
                     server.broadcastToRoom(roomId, "SCORE:" + playerName + ":0");
+                    playerScores.put(playerName, 0);
                 }
             }
             sendNextQuiz();
         }
+    }
+
+    public void restartGame() {
+        stopAllTimers();
+        playerScores.clear();
+        rpsChoices.clear();
+        currentQuizIndex = 0;
+        isGameStarted = false;
+        rpsInProgress = false;
+
+        initializeQuizzes();
+        startGame();
     }
 
     private void resetCurrentQuizAnswered() {
@@ -126,17 +154,6 @@ public class GameManager {
             for (String playerName : room.getPlayers()) {
                 currentQuizAnswered.put(playerName, false);
             }
-        }
-    }
-
-    private void sendNextQuiz() {
-        if (currentQuizIndex < quizList.size()) {
-            Quiz currentQuiz = quizList.get(currentQuizIndex);
-            resetCurrentQuizAnswered();
-            server.broadcastToRoom(roomId, "QUIZ:" + currentQuiz.toString());
-            startQuizTimer(currentQuiz.getTimeLimit());
-        } else {
-            endGame();
         }
     }
 
@@ -160,6 +177,17 @@ public class GameManager {
             }
         } else {
             server.broadcastToRoom(roomId, playerName + "님 오답입니다.");
+        }
+    }
+
+    private void sendNextQuiz() {
+        if (currentQuizIndex < quizList.size()) {
+            Quiz currentQuiz = quizList.get(currentQuizIndex);
+            resetCurrentQuizAnswered();
+            server.broadcastToRoom(roomId, "QUIZ:" + currentQuiz.toString());
+            startQuizTimer(currentQuiz.getTimeLimit());
+        } else {
+            endGame();
         }
     }
 
@@ -219,6 +247,128 @@ public class GameManager {
         sendNextQuiz();
     }
 
+    private void checkForTie() {
+        int maxScore = playerScores.values().stream()
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
+
+        tiedPlayers = playerScores.entrySet().stream()
+                .filter(e -> e.getValue() == maxScore)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+
+        if (tiedPlayers.size() > 1) {
+            startRPSGame();
+        } else {
+            sendFinalResults();
+        }
+    }
+
+    private void startRPSGame() {
+        rpsInProgress = true;
+        rpsChoices.clear();
+        String tiedPlayerList = String.join(",", tiedPlayers);
+        server.broadcastToRoom(roomId, "START_RPS:" + tiedPlayerList);
+        startRPSTimer();
+        updateRPSStatus();
+    }
+
+    private void startRPSTimer() {
+        if (rpsTimer != null) {
+            rpsTimer.cancel();
+        }
+
+        rpsTimer = new Timer();
+        rpsTimer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                determineRPSWinner();
+            }
+        }, 10000);
+    }
+
+    private void updateRPSStatus() {
+        StringBuilder status = new StringBuilder("RPS_STATUS:");
+        for (String player : tiedPlayers) {
+            status.append(player)
+                    .append(":")
+                    .append(rpsChoices.containsKey(player) ? "READY" : "WAITING")
+                    .append(";");
+        }
+        server.broadcastToRoom(roomId, status.toString());
+    }
+
+    public void handleRPSChoice(String playerName, RPS.Choice choice) {
+        if (rpsInProgress && tiedPlayers.contains(playerName)) {
+            rpsChoices.put(playerName, choice);
+            updateRPSStatus();
+
+            if (rpsChoices.size() == tiedPlayers.size()) {
+                rpsTimer.cancel();
+                determineRPSWinner();
+            }
+        }
+    }
+
+    private void determineRPSWinner() {
+        for (String player : tiedPlayers) {
+            if (!rpsChoices.containsKey(player)) {
+                RPS.Choice[] choices = RPS.Choice.values();
+                rpsChoices.put(player, choices[new Random().nextInt(choices.length)]);
+            }
+        }
+
+        List<String> winners = new ArrayList<>(tiedPlayers);
+        for (int i = 0; i < tiedPlayers.size(); i++) {
+            for (int j = i + 1; j < tiedPlayers.size(); j++) {
+                String player1 = tiedPlayers.get(i);
+                String player2 = tiedPlayers.get(j);
+                RPS.Choice choice1 = rpsChoices.get(player1);
+                RPS.Choice choice2 = rpsChoices.get(player2);
+
+                if (choice1.beats(choice2)) {
+                    winners.remove(player2);
+                } else if (choice2.beats(choice1)) {
+                    winners.remove(player1);
+                }
+            }
+        }
+
+        StringBuilder result = new StringBuilder("RPS_RESULT:");
+        for (String player : tiedPlayers) {
+            result.append(player).append("->").append(rpsChoices.get(player).getKoreanName()).append(", ");
+        }
+        result.append("\n");
+
+        if (winners.size() == 1) {
+            result.append("승자: ").append(winners.get(0));
+            tiedPlayers = winners;
+            sendFinalResults();
+        } else {
+            result.append("무승부! 다시 시작합니다.");
+            startRPSGame();
+        }
+
+        server.broadcastToRoom(roomId, result.toString());
+    }
+
+    private void sendFinalResults() {
+        rpsInProgress = false;
+        StringBuilder resultMessage = new StringBuilder("GAME_RESULT:");
+        List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>(playerScores.entrySet());
+        sortedScores.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
+
+        for (Map.Entry<String, Integer> entry : sortedScores) {
+            resultMessage.append(entry.getKey())
+                    .append(":")
+                    .append(entry.getValue())
+                    .append(";");
+        }
+
+        server.broadcastToRoom(roomId, resultMessage.toString());
+    }
+
     public void playerLeft(String playerName) {
         if (playerScores.containsKey(playerName)) {
             int finalScore = playerScores.get(playerName);
@@ -227,33 +377,57 @@ public class GameManager {
                             playerName, finalScore));
         }
 
+        playerScores.remove(playerName);
         currentQuizAnswered.remove(playerName);
+
+        if (rpsInProgress) {
+            rpsChoices.remove(playerName);
+            tiedPlayers.remove(playerName);
+            if (tiedPlayers.size() <= 1) {
+                if (rpsTimer != null) {
+                    rpsTimer.cancel();
+                }
+                sendFinalResults();
+            } else {
+                updateRPSStatus();
+            }
+        }
 
         Room room = server.getRoom(roomId);
         if (room != null && room.getPlayers().size() <= 1) {
             endGame();
         } else if (isGameStarted && allPlayersAnswered()) {
-            quizTimer.cancel();
+            if (quizTimer != null) {
+                quizTimer.cancel();
+            }
             currentQuizIndex++;
             sendNextQuiz();
         }
     }
 
-    public void endGame() {
-        isGameStarted = false;
+    public void stopAllTimers() {
         if (quizTimer != null) {
             quizTimer.cancel();
+            quizTimer = null;
         }
-
-        List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>(playerScores.entrySet());
-        sortedScores.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
-
-        StringBuilder result = new StringBuilder("게임이 종료되었습니다!\n최종 결과:\n");
-        for (Map.Entry<String, Integer> entry : sortedScores) {
-            result.append(String.format("%s: %d점\n",
-                    entry.getKey(), entry.getValue()));
+        if (rpsTimer != null) {
+            rpsTimer.cancel();
+            rpsTimer = null;
         }
-        server.broadcastToRoom(roomId, result.toString());
+    }
+
+    public void endGame() {
+        isGameStarted = false;
+        stopAllTimers();
+        checkForTie();
+    }
+
+    public void terminateGame() {
+        stopAllTimers();
+        playerScores.clear();
+        rpsChoices.clear();
+        isGameStarted = false;
+        rpsInProgress = false;
     }
 
     public boolean isGameInProgress() {
