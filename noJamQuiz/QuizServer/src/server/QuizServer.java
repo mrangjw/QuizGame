@@ -1,4 +1,3 @@
-
 package server;
 
 import model.Room;
@@ -124,12 +123,12 @@ public class QuizServer extends JFrame {
         }
     }
 
-    public synchronized Room createRoom(String name, String category, int maxPlayers, String hostName) {
+    public synchronized Room createRoom(String name, String category, int maxPlayers, int problemCount, int timeLimit, String hostName) {
         try {
             Room.QuizCategory quizCategory = Room.QuizCategory.fromKoreanName(category);
-            Room room = new Room(roomIdCounter++, name, hostName, maxPlayers, quizCategory);
+            Room room = new Room(roomIdCounter++, name, hostName, maxPlayers, quizCategory, problemCount, timeLimit);
             rooms.put(room.getRoomId(), room);
-            printDisplay(hostName + "님이 '" + name + "' 방을 생성했습니다.");
+            printDisplay(hostName + "님이 '" + name + "' 방을 생성했습니다. (문제 수: " + problemCount + ", 제한 시간: " + timeLimit + "초)");
             broadcastRoomList();
             return room;
         } catch (IllegalArgumentException e) {
@@ -228,7 +227,14 @@ public class QuizServer extends JFrame {
         if (message.startsWith("CREATE_ROOM:")) {
             try {
                 String[] parts = message.substring(12).split(",");
-                Room room = createRoom(parts[0], parts[1], Integer.parseInt(parts[2]), client.getPlayerName());
+                Room room = createRoom(
+                        parts[0],  // 방 이름
+                        parts[1],  // 카테고리
+                        Integer.parseInt(parts[2]),  // 최대 인원
+                        Integer.parseInt(parts[3]),  // 문제 수
+                        Integer.parseInt(parts[4]),  // 제한 시간
+                        client.getPlayerName()
+                );
                 if (room != null) {
                     client.send("JOIN_ROOM:" + room.getRoomId());
                 } else {

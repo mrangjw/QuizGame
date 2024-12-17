@@ -58,14 +58,16 @@ public class LobbyGUI extends JPanel {
     private void showCreateRoomDialog() {
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "방 만들기", true);
         dialog.setLayout(new BorderLayout(10, 10));
-        dialog.setSize(300, 200);
+        dialog.setSize(300, 250);
 
-        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 5, 5));
+        JPanel inputPanel = new JPanel(new GridLayout(5, 2, 5, 5));
         inputPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
         JTextField roomNameField = new JTextField();
         JComboBox<String> categoryBox = new JComboBox<>(new String[]{"통합", "경제", "사회", "넌센스"});
         JSpinner playerCountSpinner = new JSpinner(new SpinnerNumberModel(2, 2, 6, 1));
+        JSpinner problemCountSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 20, 1));
+        JSpinner timeLimitSpinner = new JSpinner(new SpinnerNumberModel(30, 10, 60, 5));
 
         inputPanel.add(new JLabel("방 제목:"));
         inputPanel.add(roomNameField);
@@ -73,6 +75,10 @@ public class LobbyGUI extends JPanel {
         inputPanel.add(categoryBox);
         inputPanel.add(new JLabel("최대 인원:"));
         inputPanel.add(playerCountSpinner);
+        inputPanel.add(new JLabel("문제 수:"));
+        inputPanel.add(problemCountSpinner);
+        inputPanel.add(new JLabel("제한 시간(초):"));
+        inputPanel.add(timeLimitSpinner);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         JButton createButton = new JButton("방 만들기");
@@ -85,8 +91,10 @@ public class LobbyGUI extends JPanel {
 
             String category = (String) categoryBox.getSelectedItem();
             int maxPlayers = (Integer) playerCountSpinner.getValue();
+            int problemCount = (Integer) problemCountSpinner.getValue();
+            int timeLimit = (Integer) timeLimitSpinner.getValue();
 
-            client.createRoom(roomName, category, maxPlayers);
+            client.createRoom(roomName, category, maxPlayers, problemCount, timeLimit);
             dialog.dispose();
         });
 

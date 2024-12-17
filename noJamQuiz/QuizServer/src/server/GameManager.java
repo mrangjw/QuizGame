@@ -37,59 +37,58 @@ public class GameManager {
     }
 
     private void initializeQuizzes() {
-        if (useGPT) {
-            initializeGPTQuizzes();
-        } else {
-            initializeFileQuizzes();
-        }
-    }
-
-    private void initializeGPTQuizzes() {
         Room room = server.getRoom(roomId);
-        try {
-            String response = gptConnector.generateQuiz(room.getCategory().getKoreanName());
-            Quiz quiz = gptConnector.parseQuizResponse(response);
-            if (quiz != null) {
-                quiz.setTimeLimit(20);
-                quiz.setPoints(10);
-                quizList.add(quiz);
-                server.printDisplay("GPT 퀴즈 생성 완료");
-            } else {
-                server.printDisplay("GPT 퀴즈 생성 실패. 파일 퀴즈로 전환합니다.");
-                initializeFileQuizzes();
+        int targetProblemCount = room.getProblemCount();
+        int timeLimit = room.getTimeLimit();
+
+        if (useGPT) {
+            for (int i = 0; i < targetProblemCount; i++) {
+                try {
+                    String response = gptConnector.generateQuiz(room.getCategory().getKoreanName());
+                    Quiz quiz = gptConnector.parseQuizResponse(response);
+                    if (quiz != null) {
+                        // 방에서 설정한 제한시간을 적용
+                        quiz.setTimeLimit(timeLimit);
+                        quiz.setPoints(10);
+                        quizList.add(quiz);
+                        server.printDisplay("GPT 퀴즈 생성 완료 - 제한시간: " + timeLimit + "초");
+                    }
+                } catch (Exception e) {
+                    server.printDisplay("GPT 퀴즈 생성 실패: " + e.getMessage());
+                }
             }
-        } catch (Exception e) {
-            server.printDisplay("GPT 퀴즈 생성 실패: " + e.getMessage());
-            initializeFileQuizzes();
+
+            if (quizList.isEmpty()) {
+                server.printDisplay("GPT 퀴즈 생성 실패. 파일 퀴즈로 전환합니다.");
+                initializeFileQuizzes(targetProblemCount, timeLimit);
+            }
+        } else {
+            initializeFileQuizzes(targetProblemCount, timeLimit);
+        }
+
+        if (!quizList.isEmpty()) {
+            server.printDisplay("총 " + quizList.size() + "개의 문제가 준비되었습니다. 제한시간: " + timeLimit + "초");
         }
     }
 
-    private void initializeFileQuizzes() {
+    private void initializeFileQuizzes(int targetProblemCount, int timeLimit) {
         QuizDataDAO quizData = new QuizDataDAO();
-
-        String currentPath = System.getProperty("user.dir");
-        server.printDisplay("현재 작업 디렉토리: " + currentPath);
-
-        File quizFile = new File("Data/Quiz1.dat");
-        server.printDisplay("Quiz1.dat 파일 경로: " + quizFile.getAbsolutePath());
-        server.printDisplay("파일 존재 여부: " + quizFile.exists());
-
         boolean loadError = quizData.loadQuiz(1);
 
         if (!loadError) {
-            for (QuestionDTO questionDTO : quizData) {
+            Collections.shuffle(quizData);
+            for (int i = 0; i < Math.min(targetProblemCount, quizData.size()); i++) {
+                QuestionDTO questionDTO = quizData.get(i);
                 Quiz quiz = new Quiz(
                         questionDTO.getQuestion(),
                         questionDTO.getAnswer(),
                         Quiz.QuizType.SHORT_ANSWER,
                         "일반상식"
                 );
-                quiz.setTimeLimit(20);
+                quiz.setTimeLimit(timeLimit);
                 quiz.setPoints(10);
                 quizList.add(quiz);
             }
-
-            Collections.shuffle(quizList);
             server.printDisplay("파일 퀴즈 데이터 로드 완료: " + quizList.size() + "개의 문제");
         } else {
             server.printDisplay("퀴즈 파일 로드 실패. 기본 퀴즈를 사용합니다.");
@@ -99,6 +98,7 @@ public class GameManager {
                     Quiz.QuizType.SHORT_ANSWER,
                     "기본"
             );
+            defaultQuiz.setTimeLimit(timeLimit);
             quizList.add(defaultQuiz);
         }
     }
@@ -109,7 +109,6 @@ public class GameManager {
             playerScores.clear();
             currentQuizIndex = 0;
             resetCurrentQuizAnswered();
-            // 모든 플레이어의 초기 점수를 0으로 설정
             Room room = server.getRoom(roomId);
             if (room != null) {
                 for (String playerName : room.getPlayers()) {
@@ -134,9 +133,7 @@ public class GameManager {
         if (currentQuizIndex < quizList.size()) {
             Quiz currentQuiz = quizList.get(currentQuizIndex);
             resetCurrentQuizAnswered();
-            // 퀴즈 문제만 먼저 전송
             server.broadcastToRoom(roomId, "QUIZ:" + currentQuiz.toString());
-            // 타이머 시작
             startQuizTimer(currentQuiz.getTimeLimit());
         } else {
             endGame();
@@ -153,7 +150,6 @@ public class GameManager {
         if (currentQuiz.checkAnswer(answer)) {
             int score = currentQuiz.calculateScore(remainingTime);
             playerScores.merge(playerName, score, Integer::sum);
-            // 정답 메시지와 점수 업데이트를 별도로 전송
             server.broadcastToRoom(roomId, playerName + "님 정답입니다.");
             server.broadcastToRoom(roomId, "SCORE:" + playerName + ":" + playerScores.get(playerName));
 

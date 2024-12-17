@@ -141,7 +141,18 @@ public class QuizClient extends JFrame {
                 int currentPlayers = Integer.parseInt(parts[4]);
                 int maxPlayers = Integer.parseInt(parts[5]);
 
-                Room room = new Room(roomId, roomName, hostName, maxPlayers, category);
+                // 방 목록 표시용으로는 기본값을 사용
+                int defaultProblemCount = 5;  // 기본 문제 수
+                int defaultTimeLimit = 30;     // 기본 제한 시간
+
+                Room room = new Room(roomId, roomName, hostName, maxPlayers, category,
+                        defaultProblemCount, defaultTimeLimit);
+
+                // 현재 참가자 수를 맞추기 위해 플레이어 추가
+                for (int i = 1; i < currentPlayers; i++) {  // hostName은 이미 추가되어 있으므로 1부터 시작
+                    room.addPlayer("Player " + i);
+                }
+
                 rooms.add(room);
             }
 
@@ -163,9 +174,10 @@ public class QuizClient extends JFrame {
         sendMessage("GPT_CHOICE:" + (choice == JOptionPane.YES_OPTION ? "Y" : "N"));
     }
 
-    public void createRoom(String roomName, String category, int maxPlayers) {
+    public void createRoom(String roomName, String category, int maxPlayers, int problemCount, int timeLimit) {
         if (socket != null && !socket.isClosed() && out != null) {
-            sendMessage(String.format("CREATE_ROOM:%s,%s,%d", roomName, category, maxPlayers));
+            sendMessage(String.format("CREATE_ROOM:%s,%s,%d,%d,%d",
+                    roomName, category, maxPlayers, problemCount, timeLimit));
         } else {
             showMessage("서버와 연결되어 있지 않습니다.");
         }

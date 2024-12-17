@@ -10,6 +10,8 @@ public class Room {
     private Vector<String> players;
     private QuizCategory category;
     private boolean isGameStarted;
+    private int problemCount;    // 추가된 필드
+    private int timeLimit;       // 추가된 필드
 
     public enum QuizCategory {
         TOTAL("통합"),
@@ -37,18 +39,21 @@ public class Room {
         }
     }
 
-    public Room(int roomId, String roomName, String hostName, int maxPlayers, QuizCategory category) {
+    public Room(int roomId, String roomName, String hostName, int maxPlayers,
+                QuizCategory category, int problemCount, int timeLimit) {
         this.roomId = roomId;
         this.roomName = roomName;
         this.hostName = hostName;
         this.maxPlayers = maxPlayers;
         this.category = category;
+        this.problemCount = problemCount;
+        this.timeLimit = timeLimit;
         this.players = new Vector<>();
         this.players.add(hostName);
         this.isGameStarted = false;
     }
 
-    // Getters and Setters
+    // Getters
     public int getRoomId() { return roomId; }
     public String getRoomName() { return roomName; }
     public String getHostName() { return hostName; }
@@ -56,6 +61,10 @@ public class Room {
     public Vector<String> getPlayers() { return players; }
     public QuizCategory getCategory() { return category; }
     public boolean isGameStarted() { return isGameStarted; }
+    public int getProblemCount() { return problemCount; }
+    public int getTimeLimit() { return timeLimit; }
+
+    // Setters
     public void setGameStarted(boolean gameStarted) { isGameStarted = gameStarted; }
 
     public boolean addPlayer(String playerName) {

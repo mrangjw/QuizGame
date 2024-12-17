@@ -201,21 +201,24 @@ public class ClientGUI extends JPanel {
     public void displayMessage(String message) {
         SwingUtilities.invokeLater(() -> {
             String content = message;
+
+            // 방 메시지 제거
             String roomPrefix = "[방 1] ";
             if (content.startsWith(roomPrefix)) {
                 content = content.substring(roomPrefix.length());
             }
 
+            // 문제 메시지 처리
             if (content.startsWith("QUIZ:")) {
                 String quizContent = content.substring("QUIZ:".length());
-                quizDisplay.setText(quizContent);
+                quizDisplay.setText(quizContent); // 문제 영역에 표시
                 return;
             }
 
+            // 타이머 메시지 처리
             if (content.startsWith("TIME:")) {
                 try {
-                    String timeStr = content.substring("TIME:".length());
-                    int seconds = Integer.parseInt(timeStr);
+                    int seconds = Integer.parseInt(content.substring("TIME:".length()));
                     timerLabel.setText("남은 시간: " + seconds + "초");
                 } catch (NumberFormatException e) {
                     System.err.println("타이머 파싱 오류: " + e.getMessage());
@@ -223,27 +226,26 @@ public class ClientGUI extends JPanel {
                 return;
             }
 
-            // 점수 메시지 처리 수정
-            if (content.startsWith("SCORE:")) {
-                try {
-                    String[] parts = content.substring("SCORE:".length()).split(":");
-                    if (parts.length == 2) {
-                        String scorePlayerName = parts[0];
-                        // 자신의 점수일 때만 업데이트
-                        if (scorePlayerName.equals(playerName)) {
-                            scoreLabel.setText("점수: " + parts[1]);
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("점수 파싱 오류: " + e.getMessage());
-                }
+            // 정답 메시지 처리
+            if (content.startsWith("정답:")) {
+                answerDisplay.append("[정답 안내] " + content + "\n");
+                answerDisplay.setCaretPosition(answerDisplay.getDocument().getLength());
                 return;
             }
 
-            answerDisplay.append(message + "\n");
+            // 게임 종료 메시지 처리
+            if (content.startsWith("게임이 종료되었습니다!")) {
+                JOptionPane.showMessageDialog(this, content, "게임 종료", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+
+            // 기본 메시지 출력
+            answerDisplay.append(content + "\n");
             answerDisplay.setCaretPosition(answerDisplay.getDocument().getLength());
         });
     }
+
+
 
     public void clearChat() {
         SwingUtilities.invokeLater(() -> {
